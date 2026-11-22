@@ -35,6 +35,7 @@ jobs:
       - name: Configure Android SDK & Accept Licenses
         run: |
           SDK_DIR="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          sudo chown -R "$(id -u):$(id -g)" "$SDK_DIR" || true
           echo "ANDROID_HOME=$SDK_DIR" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
           SDKMANAGER=$(find "$SDK_DIR/cmdline-tools" -name sdkmanager -type f 2>/dev/null | sort -V | tail -n 1)
@@ -43,9 +44,14 @@ jobs:
             exit 1
           fi
           echo "Using sdkmanager: $SDKMANAGER"
+          mkdir -p "$SDK_DIR/licenses"
           (yes || true) | "$SDKMANAGER" --sdk_root="$SDK_DIR" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" --sdk_root="$SDK_DIR" "platform-tools" "build-tools;36.0.0" "platforms;android-36"
-          "$SDKMANAGER" --sdk_root="$SDK_DIR" "platforms;android-36.1" || true
+          "$SDKMANAGER" --sdk_root="$SDK_DIR" --install "platform-tools" "build-tools;36.0.0" "platforms;android-36"
+          if ! "$SDKMANAGER" --sdk_root="$SDK_DIR" --install "platforms;android-36.1"; then
+            "$SDKMANAGER" --sdk_root="$SDK_DIR" --channel=1 --install "platforms;android-36.1" || true
+          fi
+          echo "Installed platforms:"
+          ls -la "$SDK_DIR/platforms"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -61,11 +67,11 @@ jobs:
           fi
 
       - name: Run unit tests
-        run: ./gradlew :app:testDebugUnitTest --tests "com.example.ExampleUnitTest" --no-daemon
+        run: ./gradlew :app:testDebugUnitTest --tests "com.example.ExampleUnitTest" -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" --stacktrace
 
       - name: Build Debug APK
         if: ${{ github.event.inputs.build_type != 'release' }}
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: ./gradlew :app:assembleDebug -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" --stacktrace
 
       - name: Upload Debug APK
         if: ${{ github.event.inputs.build_type != 'release' }}
@@ -102,7 +108,7 @@ jobs:
 
       - name: Build Release APK & AAB
         if: ${{ github.event.inputs.build_type != 'debug' }}
-        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon
+        run: ./gradlew :app:assembleRelease :app:bundleRelease -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" --stacktrace
 
       - name: Upload Release APK
         if: ${{ github.event.inputs.build_type != 'debug' }}
