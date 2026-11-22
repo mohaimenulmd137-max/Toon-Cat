@@ -1,0 +1,6 @@
+{
+  "name": "ToonMotion Studio",
+  "description": "Professional mobile 2D cartoon animation studio with character creator, skeletal rigging, multitrack timeline, sound & voice studio, camera controls, AI animation generator, and real MP4 video export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
