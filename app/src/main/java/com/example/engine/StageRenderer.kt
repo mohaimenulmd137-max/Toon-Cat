@@ -13,6 +13,7 @@ import androidx.compose.ui.geometry.Offset
 import com.example.domain.model.BodyAccessory
 import com.example.domain.model.BottomClothingStyle
 import com.example.domain.model.CartoonCharacter
+import com.example.domain.model.CharacterViewAngle
 import com.example.domain.model.EarStyle
 import com.example.domain.model.EyeDirection
 import com.example.domain.model.EyeShape
@@ -46,6 +47,7 @@ object StageRenderer {
         val selectedPropId: String? = null,
         val showCameraGuides: Boolean = false,
         val customBackgroundBitmap: Bitmap? = null,
+        val customCharacterBitmaps: Map<String, Bitmap> = emptyMap(),
         val qualityScale: Float = 1.0f
     )
 
@@ -100,7 +102,8 @@ object StageRenderer {
                     showRig = options.showRigOverlay && options.selectedCharacterId == cEval.instance.id,
                     selectedJoint = options.selectedJoint,
                     fillPaint = fillPaint,
-                    strokePaint = strokePaint
+                    strokePaint = strokePaint,
+                    customSpriteBitmap = options.customCharacterBitmaps[charModel.id]
                 )
             } else if (!item.isChar && item.propEval != null) {
                 drawPropOnStage(
@@ -343,10 +346,65 @@ object StageRenderer {
         showRig: Boolean,
         selectedJoint: RigJoint?,
         fillPaint: Paint,
-        strokePaint: Paint
+        strokePaint: Paint,
+        customSpriteBitmap: Bitmap? = null
     ) {
         val rootPos = Offset(evalChar.x * stageW, evalChar.y * stageH)
         val baseHeightPx = stageH * 0.46f * evalChar.scale
+        val isBack = evalChar.viewAngle == CharacterViewAngle.BACK
+        val isFront = evalChar.viewAngle == CharacterViewAngle.FRONT
+        val isSide = evalChar.viewAngle == CharacterViewAngle.SIDE
+
+        // Imported External Character Sprite (Transparent PNG / Photo)
+        if (character.customSpritePath != null && customSpriteBitmap != null && !customSpriteBitmap.isRecycled) {
+            val aspect = (customSpriteBitmap.width.toFloat() / customSpriteBitmap.height.coerceAtLeast(1)).coerceIn(0.35f, 2.2f)
+            val drawH = baseHeightPx
+            val drawW = drawH * aspect
+            val bobY = evalChar.pose.hipOffsetY * baseHeightPx
+            val swayDeg = evalChar.pose.angleOf(RigJoint.TORSO) * 0.35f
+
+            canvas.save()
+            if (evalChar.rotationDeg != 0f) {
+                canvas.rotate(evalChar.rotationDeg, rootPos.x, rootPos.y)
+            }
+            fillPaint.color = Color.argb(65, 0, 0, 0)
+            canvas.drawOval(
+                RectF(
+                    rootPos.x - drawW * 0.42f,
+                    rootPos.y - drawH * 0.03f,
+                    rootPos.x + drawW * 0.42f,
+                    rootPos.y + drawH * 0.035f
+                ),
+                fillPaint
+            )
+
+            canvas.save()
+            canvas.translate(rootPos.x, rootPos.y + bobY)
+            canvas.rotate(swayDeg)
+            val flipScaleX = if (evalChar.facingRight) 1f else -1f
+            val angleScaleX = when (evalChar.viewAngle) {
+                CharacterViewAngle.SIDE -> 0.85f
+                else -> 1f
+            }
+            canvas.scale(flipScaleX * angleScaleX, 1f)
+            val srcRect = android.graphics.Rect(0, 0, customSpriteBitmap.width, customSpriteBitmap.height)
+            val dstRect = RectF(-drawW * 0.5f, -drawH, drawW * 0.5f, 0f)
+            fillPaint.alpha = if (isBack) 215 else 255
+            canvas.drawBitmap(customSpriteBitmap, srcRect, dstRect, fillPaint)
+            fillPaint.alpha = 255
+            canvas.restore()
+
+            if (isSelected) {
+                strokePaint.color = 0xFF00E5FF.toInt()
+                strokePaint.strokeWidth = 3.5f
+                strokePaint.pathEffect = DashPathEffect(floatArrayOf(12f, 8f), 0f)
+                canvas.drawRect(-drawW * 0.52f + rootPos.x, -drawH + rootPos.y, drawW * 0.52f + rootPos.x, rootPos.y + 4f, strokePaint)
+                strokePaint.pathEffect = null
+            }
+            canvas.restore()
+            return
+        }
+
         val rig = RigSolver.solveRig(
             rootGroundPos = rootPos,
             baseHeightPx = baseHeightPx,
@@ -379,17 +437,22 @@ object StageRenderer {
         val bottomColor = character.clothing.bottomColorHex.toInt()
         val shoeColor = character.clothing.shoesColorHex.toInt()
         val dir = if (evalChar.facingRight) 1f else -1f
+        val effectiveTorsoW = when {
+            isSide -> rig.torsoWidth * 0.78f
+            isFront || isBack -> rig.torsoWidth * 1.04f
+            else -> rig.torsoWidth
+        }
 
         fun j(joint: RigJoint): Offset = rig.joints[joint] ?: rootPos
 
-        // Hero cape behind torso if equipped
-        if (character.clothing.accessory == BodyAccessory.CAPE) {
+        // Hero cape behind torso when viewed from Front / Side / 3-4
+        if (character.clothing.accessory == BodyAccessory.CAPE && !isBack) {
             fillPaint.color = character.clothing.accessoryColorHex.toInt()
             val cape = Path().apply {
                 moveTo(j(RigJoint.SHOULDER_L).x, j(RigJoint.SHOULDER_L).y)
                 lineTo(j(RigJoint.SHOULDER_R).x, j(RigJoint.SHOULDER_R).y)
-                lineTo(j(RigJoint.HIP).x - dir * rig.torsoWidth * 1.25f, j(RigJoint.HIP).y + rig.upperLegLen * 0.9f)
-                lineTo(j(RigJoint.HIP).x - dir * rig.torsoWidth * 0.35f, j(RigJoint.HIP).y + rig.upperLegLen * 0.95f)
+                lineTo(j(RigJoint.HIP).x - dir * effectiveTorsoW * 1.25f, j(RigJoint.HIP).y + rig.upperLegLen * 0.9f)
+                lineTo(j(RigJoint.HIP).x - dir * effectiveTorsoW * 0.35f, j(RigJoint.HIP).y + rig.upperLegLen * 0.95f)
                 close()
             }
             canvas.drawPath(cape, fillPaint)
@@ -405,13 +468,13 @@ object StageRenderer {
         drawLimb(canvas, j(RigJoint.UPPER_LEG_L), j(RigJoint.KNEE_L), rig.legThickness, legPantsColor, outlineColor, strokePaint)
         val lowerLegColorL = if (character.clothing.bottomStyle == BottomClothingStyle.SHORTS || character.clothing.bottomStyle == BottomClothingStyle.SKIRT) skinColor else legPantsColor
         drawLimb(canvas, j(RigJoint.KNEE_L), j(RigJoint.LOWER_LEG_L), rig.legThickness * 0.9f, lowerLegColorL, outlineColor, strokePaint)
-        drawShoe(canvas, j(RigJoint.LOWER_LEG_L), j(RigJoint.FOOT_L), rig.legThickness, shoeColor, character.clothing.shoesStyle, outlineColor, fillPaint, strokePaint)
+        drawShoe(canvas, j(RigJoint.LOWER_LEG_L), j(RigJoint.FOOT_L), rig.legThickness, shoeColor, character.clothing.shoesStyle, outlineColor, fillPaint, strokePaint, evalChar.viewAngle)
 
         // Front leg (Right)
         drawLimb(canvas, j(RigJoint.UPPER_LEG_R), j(RigJoint.KNEE_R), rig.legThickness, legPantsColor, outlineColor, strokePaint)
         val lowerLegColorR = if (character.clothing.bottomStyle == BottomClothingStyle.SHORTS || character.clothing.bottomStyle == BottomClothingStyle.SKIRT) skinColor else legPantsColor
         drawLimb(canvas, j(RigJoint.KNEE_R), j(RigJoint.LOWER_LEG_R), rig.legThickness * 0.9f, lowerLegColorR, outlineColor, strokePaint)
-        drawShoe(canvas, j(RigJoint.LOWER_LEG_R), j(RigJoint.FOOT_R), rig.legThickness, shoeColor, character.clothing.shoesStyle, outlineColor, fillPaint, strokePaint)
+        drawShoe(canvas, j(RigJoint.LOWER_LEG_R), j(RigJoint.FOOT_R), rig.legThickness, shoeColor, character.clothing.shoesStyle, outlineColor, fillPaint, strokePaint, evalChar.viewAngle)
 
         // Skirt / Dress bottom flare if selected
         if (character.clothing.bottomStyle == BottomClothingStyle.SKIRT || character.clothing.topStyle == TopClothingStyle.DRESS) {
@@ -432,14 +495,14 @@ object StageRenderer {
         }
 
         // Torso & Clothing
-        drawTorso(canvas, j(RigJoint.HIP), j(RigJoint.CHEST), rig.torsoWidth, character.clothing.topStyle, topColor, bottomColor, outlineColor, fillPaint, strokePaint)
+        drawTorso(canvas, j(RigJoint.HIP), j(RigJoint.CHEST), effectiveTorsoW, character.clothing.topStyle, topColor, bottomColor, outlineColor, fillPaint, strokePaint, isBack)
 
         // Scarf accessory
         if (character.clothing.accessory == BodyAccessory.SCARF) {
             fillPaint.color = character.clothing.accessoryColorHex.toInt()
             val neck = j(RigJoint.NECK)
             canvas.drawRoundRect(
-                RectF(neck.x - rig.torsoWidth * 0.42f, neck.y - 6f, neck.x + rig.torsoWidth * 0.42f, neck.y + rig.headRadius * 0.25f),
+                RectF(neck.x - effectiveTorsoW * 0.42f, neck.y - 6f, neck.x + effectiveTorsoW * 0.42f, neck.y + rig.headRadius * 0.25f),
                 10f, 10f, fillPaint
             )
         }
@@ -447,7 +510,7 @@ object StageRenderer {
         // Neck
         drawLimb(canvas, j(RigJoint.CHEST), j(RigJoint.NECK), rig.armThickness * 0.95f, skinColor, outlineColor, strokePaint)
 
-        // Head + Hair + Face
+        // Head + Hair + Face (respects Front / 3-4 / Side / Back)
         drawHeadAndFace(
             canvas = canvas,
             headCenter = j(RigJoint.HEAD),
@@ -466,6 +529,31 @@ object StageRenderer {
         drawLimb(canvas, j(RigJoint.UPPER_ARM_R), j(RigJoint.HAND_R), rig.armThickness * 0.88f, if (character.clothing.topStyle == TopClothingStyle.TSHIRT) skinColor else topColor, outlineColor, strokePaint)
         drawHandWithFingers(canvas, j(RigJoint.HAND_R), j(RigJoint.FINGERS_R), rig.armThickness * 0.68f, skinColor, outlineColor, fillPaint, strokePaint)
 
+        // Back-view Backpack / Hero Cape over back of torso
+        if (isBack && character.clothing.accessory == BodyAccessory.CAPE) {
+            fillPaint.color = character.clothing.accessoryColorHex.toInt()
+            val cape = Path().apply {
+                moveTo(j(RigJoint.SHOULDER_L).x, j(RigJoint.SHOULDER_L).y)
+                lineTo(j(RigJoint.SHOULDER_R).x, j(RigJoint.SHOULDER_R).y)
+                lineTo(j(RigJoint.HIP).x + effectiveTorsoW * 0.95f, j(RigJoint.HIP).y + rig.upperLegLen * 0.95f)
+                lineTo(j(RigJoint.HIP).x - effectiveTorsoW * 0.95f, j(RigJoint.HIP).y + rig.upperLegLen * 0.95f)
+                close()
+            }
+            canvas.drawPath(cape, fillPaint)
+            strokePaint.color = outlineColor
+            strokePaint.strokeWidth = 2.6f
+            canvas.drawPath(cape, strokePaint)
+        } else if (isBack && character.clothing.accessory == BodyAccessory.BACKPACK) {
+            fillPaint.color = character.clothing.accessoryColorHex.toInt()
+            val midY = (j(RigJoint.CHEST).y + j(RigJoint.HIP).y) * 0.5f
+            val midX = (j(RigJoint.CHEST).x + j(RigJoint.HIP).x) * 0.5f
+            val packRect = RectF(midX - effectiveTorsoW * 0.45f, j(RigJoint.CHEST).y, midX + effectiveTorsoW * 0.45f, midY + effectiveTorsoW * 0.35f)
+            canvas.drawRoundRect(packRect, 12f, 12f, fillPaint)
+            strokePaint.color = outlineColor
+            strokePaint.strokeWidth = 2.6f
+            canvas.drawRoundRect(packRect, 12f, 12f, strokePaint)
+        }
+
         // Selection ring
         if (isSelected) {
             strokePaint.color = 0xFF00E5FF.toInt()
@@ -473,9 +561,9 @@ object StageRenderer {
             strokePaint.pathEffect = DashPathEffect(floatArrayOf(12f, 8f), 0f)
             canvas.drawOval(
                 RectF(
-                    rootPos.x - rig.torsoWidth * 1.4f,
+                    rootPos.x - effectiveTorsoW * 1.4f,
                     rootPos.y - baseHeightPx * 0.05f,
-                    rootPos.x + rig.torsoWidth * 1.4f,
+                    rootPos.x + effectiveTorsoW * 1.4f,
                     rootPos.y + baseHeightPx * 0.06f
                 ),
                 strokePaint
@@ -540,16 +628,21 @@ object StageRenderer {
         style: ShoesStyle,
         outlineColor: Int,
         fill: Paint,
-        stroke: Paint
+        stroke: Paint,
+        viewAngle: CharacterViewAngle = CharacterViewAngle.THREE_QUARTER
     ) {
         val h = when (style) {
             ShoesStyle.BOOTS -> legThickness * 1.15f
             ShoesStyle.SANDALS -> legThickness * 0.55f
             else -> legThickness * 0.85f
         }
-        val minX = minOf(ankle.x, toe.x) - legThickness * 0.45f
-        val maxX = maxOf(ankle.x, toe.x) + legThickness * 0.55f
-        val rect = RectF(minX, ankle.y - h * 0.3f, maxX, ankle.y + h * 0.75f)
+        val rect = if (viewAngle == CharacterViewAngle.FRONT || viewAngle == CharacterViewAngle.BACK) {
+            RectF(ankle.x - legThickness * 0.68f, ankle.y - h * 0.25f, ankle.x + legThickness * 0.68f, ankle.y + h * 0.75f)
+        } else {
+            val minX = minOf(ankle.x, toe.x) - legThickness * 0.45f
+            val maxX = maxOf(ankle.x, toe.x) + legThickness * 0.55f
+            RectF(minX, ankle.y - h * 0.3f, maxX, ankle.y + h * 0.75f)
+        }
         fill.color = shoeColor
         canvas.drawRoundRect(rect, h * 0.45f, h * 0.45f, fill)
         stroke.color = outlineColor
@@ -567,7 +660,8 @@ object StageRenderer {
         bottomColor: Int,
         outlineColor: Int,
         fill: Paint,
-        stroke: Paint
+        stroke: Paint,
+        isBack: Boolean = false
     ) {
         val cx = (hip.x + chest.x) * 0.5f
         val topY = chest.y - torsoWidth * 0.14f
@@ -580,7 +674,22 @@ object StageRenderer {
         stroke.strokeWidth = 3f
         canvas.drawRoundRect(rect, torsoWidth * 0.34f, torsoWidth * 0.34f, stroke)
 
-        // Style details
+        if (isBack) {
+            if (topStyle == TopClothingStyle.HOODIE) {
+                fill.color = blendColor(topColor, Color.BLACK, 0.16f)
+                val hood = RectF(cx - torsoWidth * 0.38f, topY - 4f, cx + torsoWidth * 0.38f, topY + torsoWidth * 0.32f)
+                canvas.drawRoundRect(hood, 14f, 14f, fill)
+                canvas.drawRoundRect(hood, 14f, 14f, stroke)
+            } else {
+                // Subtle back shoulder seam
+                stroke.color = blendColor(topColor, Color.BLACK, 0.25f)
+                stroke.strokeWidth = 2f
+                canvas.drawLine(cx, topY + 6f, cx, botY - 8f, stroke)
+            }
+            return
+        }
+
+        // Front Style details
         when (topStyle) {
             TopClothingStyle.JACKET -> {
                 fill.color = Color.WHITE
@@ -624,6 +733,11 @@ object StageRenderer {
         strokePaint: Paint
     ) {
         val dir = if (facingRight) 1f else -1f
+        val viewAngle = evalChar.viewAngle
+        val isBack = viewAngle == CharacterViewAngle.BACK
+        val isFront = viewAngle == CharacterViewAngle.FRONT
+        val isSide = viewAngle == CharacterViewAngle.SIDE
+
         canvas.save()
         canvas.rotate(headAngleDeg * dir, headCenter.x, headCenter.y)
 
@@ -631,7 +745,7 @@ object StageRenderer {
         val hairColor = character.hair.colorHex.toInt()
 
         // Back hair for long/ponytail
-        if (character.hair.style == HairStyle.LONG || character.hair.style == HairStyle.PONYTAIL) {
+        if (!isBack && (character.hair.style == HairStyle.LONG || character.hair.style == HairStyle.PONYTAIL)) {
             fillPaint.color = hairColor
             if (character.hair.style == HairStyle.LONG) {
                 canvas.drawRoundRect(
@@ -653,16 +767,21 @@ object StageRenderer {
             else -> headRadius * 0.22f
         }
         fillPaint.color = skin
-        canvas.drawCircle(headCenter.x - headRadius * 0.96f, headCenter.y + headRadius * 0.08f, earR, fillPaint)
-        canvas.drawCircle(headCenter.x + headRadius * 0.96f, headCenter.y + headRadius * 0.08f, earR, fillPaint)
+        if (isSide) {
+            canvas.drawCircle(headCenter.x - dir * headRadius * 0.42f, headCenter.y + headRadius * 0.08f, earR, fillPaint)
+        } else {
+            canvas.drawCircle(headCenter.x - headRadius * 0.96f, headCenter.y + headRadius * 0.08f, earR, fillPaint)
+            canvas.drawCircle(headCenter.x + headRadius * 0.96f, headCenter.y + headRadius * 0.08f, earR, fillPaint)
+        }
 
         // Head Shape
         fillPaint.color = skin
+        val headWidthFactor = if (isSide) 0.86f else 1.0f
         val headRect = when (character.face.faceShape) {
-            FaceShape.ROUND -> RectF(headCenter.x - headRadius, headCenter.y - headRadius, headCenter.x + headRadius, headCenter.y + headRadius)
-            FaceShape.SQUARE -> RectF(headCenter.x - headRadius * 0.96f, headCenter.y - headRadius * 0.98f, headCenter.x + headRadius * 0.96f, headCenter.y + headRadius * 0.98f)
-            FaceShape.HEART -> RectF(headCenter.x - headRadius * 0.94f, headCenter.y - headRadius * 1.02f, headCenter.x + headRadius * 0.94f, headCenter.y + headRadius * 0.95f)
-            else -> RectF(headCenter.x - headRadius * 0.92f, headCenter.y - headRadius * 1.05f, headCenter.x + headRadius * 0.92f, headCenter.y + headRadius * 1.02f)
+            FaceShape.ROUND -> RectF(headCenter.x - headRadius * headWidthFactor, headCenter.y - headRadius, headCenter.x + headRadius * headWidthFactor, headCenter.y + headRadius)
+            FaceShape.SQUARE -> RectF(headCenter.x - headRadius * 0.96f * headWidthFactor, headCenter.y - headRadius * 0.98f, headCenter.x + headRadius * 0.96f * headWidthFactor, headCenter.y + headRadius * 0.98f)
+            FaceShape.HEART -> RectF(headCenter.x - headRadius * 0.94f * headWidthFactor, headCenter.y - headRadius * 1.02f, headCenter.x + headRadius * 0.94f * headWidthFactor, headCenter.y + headRadius * 0.95f)
+            else -> RectF(headCenter.x - headRadius * 0.92f * headWidthFactor, headCenter.y - headRadius * 1.05f, headCenter.x + headRadius * 0.92f * headWidthFactor, headCenter.y + headRadius * 1.02f)
         }
         val corner = if (character.face.faceShape == FaceShape.SQUARE) headRadius * 0.36f else headRadius * 0.92f
         canvas.drawRoundRect(headRect, corner, corner, fillPaint)
@@ -670,28 +789,78 @@ object StageRenderer {
         strokePaint.strokeWidth = 3f
         canvas.drawRoundRect(headRect, corner, corner, strokePaint)
 
+        // Full Back-of-Head view (no facial features visible)
+        if (isBack) {
+            if (character.hair.style != HairStyle.BALD) {
+                fillPaint.color = hairColor
+                strokePaint.color = outlineColor
+                strokePaint.strokeWidth = 2.6f
+                val backHairRect = RectF(
+                    headRect.left - headRadius * 0.04f,
+                    headRect.top - headRadius * 0.06f,
+                    headRect.right + headRadius * 0.04f,
+                    headCenter.y + headRadius * 0.62f
+                )
+                canvas.drawRoundRect(backHairRect, headRadius * 0.85f, headRadius * 0.85f, fillPaint)
+                canvas.drawRoundRect(backHairRect, headRadius * 0.85f, headRadius * 0.85f, strokePaint)
+                if (character.hair.style == HairStyle.LONG) {
+                    canvas.drawRoundRect(
+                        RectF(headRect.left - headRadius * 0.08f, headCenter.y, headRect.right + headRadius * 0.08f, headCenter.y + headRadius * 1.65f),
+                        headRadius * 0.4f, headRadius * 0.4f, fillPaint
+                    )
+                } else if (character.hair.style == HairStyle.PONYTAIL) {
+                    canvas.drawOval(
+                        RectF(headCenter.x - headRadius * 0.35f, headCenter.y - headRadius * 0.1f, headCenter.x + headRadius * 0.35f, headCenter.y + headRadius * 1.15f),
+                        fillPaint
+                    )
+                } else if (character.hair.style == HairStyle.CURLY) {
+                    for (a in -3..3) {
+                        val ang = (a * 24f - 90f) * (PI / 180.0)
+                        val cx = headCenter.x + (cos(ang) * headRadius * 0.88f).toFloat()
+                        val cy = headCenter.y + (sin(ang) * headRadius * 0.88f).toFloat()
+                        canvas.drawCircle(cx, cy, headRadius * 0.36f, fillPaint)
+                    }
+                }
+            }
+            if (character.clothing.hatStyle != HatStyle.NONE) {
+                drawHat(canvas, headCenter, headRadius, dir, character.clothing.hatStyle, character.clothing.hatColorHex.toInt(), outlineColor, fillPaint, strokePaint, isBack = true)
+            }
+            canvas.restore()
+            return
+        }
+
         // Shy blush cheeks
+        val lookShiftX = when {
+            isFront -> 0f
+            isSide -> dir * headRadius * 0.32f
+            else -> dir * headRadius * 0.12f
+        }
         if (evalChar.expression == FacialExpression.SHY || evalChar.expression == FacialExpression.SMILE) {
             fillPaint.color = Color.argb(if (evalChar.expression == FacialExpression.SHY) 130 else 65, 255, 105, 135)
-            canvas.drawOval(RectF(headCenter.x - headRadius * 0.65f, headCenter.y + headRadius * 0.14f, headCenter.x - headRadius * 0.30f, headCenter.y + headRadius * 0.32f), fillPaint)
-            canvas.drawOval(RectF(headCenter.x + headRadius * 0.30f, headCenter.y + headRadius * 0.14f, headCenter.x + headRadius * 0.65f, headCenter.y + headRadius * 0.32f), fillPaint)
+            if (isSide) {
+                val bx = headCenter.x + lookShiftX * 0.65f
+                canvas.drawOval(RectF(bx - headRadius * 0.16f, headCenter.y + headRadius * 0.14f, bx + headRadius * 0.16f, headCenter.y + headRadius * 0.32f), fillPaint)
+            } else {
+                canvas.drawOval(RectF(headCenter.x + lookShiftX - headRadius * 0.65f, headCenter.y + headRadius * 0.14f, headCenter.x + lookShiftX - headRadius * 0.30f, headCenter.y + headRadius * 0.32f), fillPaint)
+                canvas.drawOval(RectF(headCenter.x + lookShiftX + headRadius * 0.30f, headCenter.y + headRadius * 0.14f, headCenter.x + lookShiftX + headRadius * 0.65f, headCenter.y + headRadius * 0.32f), fillPaint)
+            }
         }
 
         // Eyes
-        val lookShiftX = dir * headRadius * 0.12f
         val eyeY = headCenter.y - headRadius * 0.08f
-        val eyeSpacing = headRadius * 0.36f
+        val eyeSpacing = if (isSide) headRadius * 0.22f else headRadius * 0.36f
         val eyeR = headRadius * 0.18f * character.face.eyeSize.coerceIn(0.75f, 1.35f)
         val pupilOffset = when (evalChar.eyeDirection) {
             EyeDirection.LEFT -> Offset(-eyeR * 0.32f, 0f)
             EyeDirection.RIGHT -> Offset(eyeR * 0.32f, 0f)
             EyeDirection.UP -> Offset(0f, -eyeR * 0.32f)
             EyeDirection.DOWN -> Offset(0f, eyeR * 0.32f)
-            else -> Offset(dir * eyeR * 0.14f, 0f)
+            else -> if (isFront) Offset.Zero else Offset(dir * eyeR * 0.14f, 0f)
         }
 
-        for (side in intArrayOf(-1, 1)) {
-            val ex = headCenter.x + lookShiftX + side * eyeSpacing
+        val eyeSides = if (isSide) intArrayOf(dir.toInt()) else intArrayOf(-1, 1)
+        for (side in eyeSides) {
+            val ex = if (isSide) headCenter.x + lookShiftX * 0.7f else headCenter.x + lookShiftX + side * eyeSpacing
             val openScale = (1f - evalChar.eyeBlinkAmount).coerceIn(0.08f, 1f)
             if (openScale < 0.18f) {
                 strokePaint.color = outlineColor
@@ -973,7 +1142,8 @@ object StageRenderer {
         hatColor: Int,
         outlineColor: Int,
         fill: Paint,
-        stroke: Paint
+        stroke: Paint,
+        isBack: Boolean = false
     ) {
         fill.color = hatColor
         stroke.color = outlineColor
@@ -983,10 +1153,14 @@ object StageRenderer {
                 val dome = RectF(c.x - r * 0.98f, c.y - r * 1.25f, c.x + r * 0.98f, c.y - r * 0.2f)
                 canvas.drawArc(dome, 180f, 180f, true, fill)
                 canvas.drawArc(dome, 180f, 180f, true, stroke)
-                // Visor brim
-                val brim = RectF(c.x - r * 0.1f * dir, c.y - r * 0.78f, c.x + dir * r * 1.38f, c.y - r * 0.54f)
-                canvas.drawRoundRect(brim, 8f, 8f, fill)
-                canvas.drawRoundRect(brim, 8f, 8f, stroke)
+                if (isBack) {
+                    fill.color = outlineColor
+                    canvas.drawRoundRect(RectF(c.x - r * 0.35f, c.y - r * 0.62f, c.x + r * 0.35f, c.y - r * 0.45f), 4f, 4f, fill)
+                } else {
+                    val brim = RectF(c.x - r * 0.1f * dir, c.y - r * 0.78f, c.x + dir * r * 1.38f, c.y - r * 0.54f)
+                    canvas.drawRoundRect(brim, 8f, 8f, fill)
+                    canvas.drawRoundRect(brim, 8f, 8f, stroke)
+                }
             }
             HatStyle.BEANIE -> {
                 val dome = RectF(c.x - r * 0.98f, c.y - r * 1.32f, c.x + r * 0.98f, c.y - r * 0.3f)

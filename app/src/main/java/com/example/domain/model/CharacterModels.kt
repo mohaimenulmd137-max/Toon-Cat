@@ -3,138 +3,138 @@ package com.example.domain.model
 import com.squareup.moshi.JsonClass
 
 enum class CharacterStyle(val label: String) {
-    MODERN_2D("Modern 2D"),
-    CHIBI("Chibi"),
-    COMIC_HERO("Comic Hero"),
-    CLASSIC_TOON("Classic Toon"),
-    ANIME_LITE("Anime-Lite")
+    MODERN_2D("আধুনিক ২ডি"),
+    CHIBI("চিবি (কিউট)"),
+    COMIC_HERO("কমিক হিরো"),
+    CLASSIC_TOON("ক্লাসিক কার্টুন"),
+    ANIME_LITE("অ্যানিমে-লাইট")
 }
 
 enum class FaceShape(val label: String) {
-    OVAL("Oval"),
-    ROUND("Round"),
-    SQUARE("Square"),
-    HEART("Heart"),
-    DIAMOND("Diamond")
+    OVAL("ডিম্বাকৃতি"),
+    ROUND("গোলাকার"),
+    SQUARE("চৌকো"),
+    HEART("হার্ট আকৃতি"),
+    DIAMOND("ডায়মন্ড")
 }
 
 enum class EyeShape(val label: String) {
-    ROUND("Round"),
-    ALMOND("Almond"),
-    WIDE("Wide"),
-    HALF_LID("Relaxed"),
-    ANIME("Sparkle")
+    ROUND("গোলাকার"),
+    ALMOND("বাদামি"),
+    WIDE("বড় ও উজ্জ্বল"),
+    HALF_LID("রিল্যাক্সড"),
+    ANIME("অ্যানিমে ঝলক")
 }
 
 enum class EyebrowStyle(val label: String) {
-    ARCHED("Arched"),
-    THICK("Thick"),
-    STRAIGHT("Straight"),
-    CURVED("Curved"),
-    THIN("Thin")
+    ARCHED("বাঁকানো"),
+    THICK("ঘন"),
+    STRAIGHT("সোজা"),
+    CURVED("নমনীয়"),
+    THIN("সরু")
 }
 
 enum class NoseStyle(val label: String) {
-    BUTTON("Button"),
-    POINTED("Pointed"),
-    ROUND("Round"),
-    SOFT_CURVE("Soft"),
-    CLASSIC("Classic")
+    BUTTON("ছোট্ট নাক"),
+    POINTED("তীক্ষ্ণ"),
+    ROUND("গোল"),
+    SOFT_CURVE("নরম বাঁক"),
+    CLASSIC("ক্লাসিক")
 }
 
 enum class MouthStyle(val label: String) {
-    CARTOON("Cartoon"),
-    SMILE_LINE("Clean Line"),
-    EXPRESSIVE("Expressive"),
-    WIDE_GRIN("Wide Grin")
+    CARTOON("কার্টুন"),
+    SMILE_LINE("সিম্পল হাসি"),
+    EXPRESSIVE("ভাবপ্রবণ"),
+    WIDE_GRIN("চওড়া হাসি")
 }
 
 enum class TeethStyle(val label: String) {
-    STANDARD("Standard"),
-    BUCK("Buck Teeth"),
-    FANG("Cute Fang"),
-    HIDDEN("Subtle")
+    STANDARD("স্বাভাবিক"),
+    BUCK("খরগোশ দাঁত"),
+    FANG("কিউট ফ্যাং"),
+    HIDDEN("লুকানো")
 }
 
 enum class EarStyle(val label: String) {
-    ROUND("Round"),
-    POINTED("Elf/Pointed"),
-    SMALL("Small"),
-    LARGE("Large")
+    ROUND("গোল"),
+    POINTED("এলফ / তীক্ষ্ণ"),
+    SMALL("ছোট"),
+    LARGE("বড়")
 }
 
 enum class HairStyle(val label: String) {
-    SHORT("Short Crop"),
-    LONG("Long Flowing"),
-    CURLY("Curly Afro"),
-    STRAIGHT("Straight Sleek"),
-    SPIKY("Spiky"),
-    PONYTAIL("Ponytail"),
-    BOB("Classic Bob"),
-    BALD("Clean Shaved")
+    SHORT("ছোট চুল"),
+    LONG("লম্বা খোলা চুল"),
+    CURLY("কোঁকড়ানো"),
+    STRAIGHT("সোজা মসৃণ"),
+    SPIKY("স্পাইকি"),
+    PONYTAIL("পনিটেইল / ঝুঁটি"),
+    BOB("বব কাট"),
+    BALD("টাক / পরিষ্কার")
 }
 
 enum class HairAccessory(val label: String) {
-    NONE("None"),
-    HEADBAND("Headband"),
-    HAIRPIN("Hairpin"),
-    RIBBON("Ribbon"),
-    CROWN("Crown")
+    NONE("নেই"),
+    HEADBAND("হেডব্যান্ড"),
+    HAIRPIN("হেয়ারপিন"),
+    RIBBON("ফিতা / রিবন"),
+    CROWN("মুকুট")
 }
 
 enum class BodyShape(val label: String) {
-    BALANCED("Balanced"),
-    ATHLETIC("Athletic"),
-    ROUND("Round"),
-    SLIM("Slim")
+    BALANCED("সুষম"),
+    ATHLETIC("সুগঠিত"),
+    ROUND("স্থূল / গোল"),
+    SLIM("ছিপছিপে")
 }
 
 enum class TopClothingStyle(val label: String) {
-    TSHIRT("T-Shirt"),
-    SHIRT("Button Shirt"),
-    JACKET("Studio Jacket"),
-    HOODIE("Hoodie"),
-    UNIFORM("School Uniform"),
-    TRADITIONAL("Traditional Tunic"),
-    DRESS("Cartoon Dress")
+    TSHIRT("টি-শার্ট"),
+    SHIRT("শার্ট"),
+    JACKET("স্টুডিও জ্যাকেট"),
+    HOODIE("হুডি"),
+    UNIFORM("স্কুল ইউনিফর্ম"),
+    TRADITIONAL("পাঞ্জাবি / ঐতিহ্যবাহী"),
+    DRESS("কার্টুন ড্রেস")
 }
 
 enum class BottomClothingStyle(val label: String) {
-    PANTS("Pants"),
-    SHORTS("Shorts"),
-    SKIRT("Skirt"),
-    NONE("Full Dress")
+    PANTS("প্যান্ট"),
+    SHORTS("শর্টস"),
+    SKIRT("স্কার্ট"),
+    NONE("ফুল ড্রেস")
 }
 
 enum class ShoesStyle(val label: String) {
-    SNEAKERS("Sneakers"),
-    BOOTS("Boots"),
-    LOAFERS("Loafers"),
-    SANDALS("Sandals")
+    SNEAKERS("স্নিকার্স"),
+    BOOTS("বুট জুতা"),
+    LOAFERS("লোফার"),
+    SANDALS("স্যান্ডেল")
 }
 
 enum class HatStyle(val label: String) {
-    NONE("None"),
-    CAP("Baseball Cap"),
-    BEANIE("Beanie"),
-    FEDORA("Fedora"),
-    HELMET("Adventure Helmet")
+    NONE("নেই"),
+    CAP("ক্যাপ / টুপি"),
+    BEANIE("উলের টুপি"),
+    FEDORA("ফেডোরা হ্যাট"),
+    HELMET("অ্যাডভেঞ্চার হেলমেট")
 }
 
 enum class GlassesStyle(val label: String) {
-    NONE("None"),
-    ROUND("Round Frames"),
-    SQUARE("Thick Square"),
-    SUNGLASSES("Shades"),
-    VISOR("Cyber Visor")
+    NONE("নেই"),
+    ROUND("গোল ফ্রেম"),
+    SQUARE("চৌকো চশমা"),
+    SUNGLASSES("সানগ্লাস"),
+    VISOR("সাইবার ভাইজর")
 }
 
 enum class BodyAccessory(val label: String) {
-    NONE("None"),
-    BACKPACK("Backpack"),
-    SCARF("Scarf"),
-    CAPE("Hero Cape"),
-    WATCH("Wrist Watch")
+    NONE("নেই"),
+    BACKPACK("ব্যাকপ্যাক / ব্যাগ"),
+    SCARF("স্কার্ফ"),
+    CAPE("হিরো কেপ"),
+    WATCH("হাতঘড়ি")
 }
 
 @JsonClass(generateAdapter = true)
@@ -186,6 +186,13 @@ data class ClothingConfig(
     val accessoryColorHex: Long = 0xFFFF5277
 )
 
+enum class CharacterViewAngle(val label: String) {
+    FRONT("সামনের দিক"),
+    THREE_QUARTER("৩/৪ দিক"),
+    SIDE("পাশের দিক"),
+    BACK("পিছনের দিক")
+}
+
 @JsonClass(generateAdapter = true)
 data class CartoonCharacter(
     val id: String,
@@ -196,5 +203,6 @@ data class CartoonCharacter(
     val body: BodyConfig = BodyConfig(),
     val clothing: ClothingConfig = ClothingConfig(),
     val savedPoses: List<SavedPose> = emptyList(),
+    val customSpritePath: String? = null,
     val isTemplate: Boolean = false
 )

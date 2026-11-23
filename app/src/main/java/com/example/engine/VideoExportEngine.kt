@@ -65,7 +65,7 @@ object VideoExportEngine {
         val safeName = projectName.replace(Regex("[^A-Za-z0-9_-]"), "_").ifBlank { "ToonMotion" }
         val outFile = File(exportDir, "${safeName}_${System.currentTimeMillis()}.mp4")
 
-        onProgress(0.02f, "Mixing audio tracks...")
+        onProgress(0.02f, "অডিও ট্র্যাক মিক্স করা হচ্ছে...")
         val mixedPcm = audioEngine.mixSceneAudioToPcm(
             scene = scene,
             includeDialogue = config.includeDialogue,
@@ -124,10 +124,18 @@ object VideoExportEngine {
             var audioInputDone = false
             var audioOutputDone = false
 
+            val customCharBitmaps = characterLibrary.values
+                .filter { !it.customSpritePath.isNullOrBlank() }
+                .mapNotNull { ch ->
+                    runCatching { android.graphics.BitmapFactory.decodeFile(ch.customSpritePath) }.getOrNull()?.let { ch.id to it }
+                }
+                .toMap()
+
             val renderOptions = StageRenderer.RenderOptions(
                 showRigOverlay = false,
                 showCameraGuides = false,
-                customBackgroundBitmap = customBgBitmap
+                customBackgroundBitmap = customBgBitmap,
+                customCharacterBitmaps = customCharBitmaps
             )
 
             // Phase 1: Drain format headers first if needed, or buffer encoded frames until both tracks added
@@ -187,7 +195,7 @@ object VideoExportEngine {
                             }
                             frameIndex++
                             val pct = 0.05f + 0.90f * (frameIndex.toFloat() / totalFrames)
-                            onProgress(pct, "Rendering frame $frameIndex / $totalFrames ($fps FPS)")
+                            onProgress(pct, "ফ্রেম রেন্ডার হচ্ছে $frameIndex / $totalFrames ($fps ফ্রেম/সে.)")
                         }
                     }
                 }
@@ -279,7 +287,7 @@ object VideoExportEngine {
                 }
             }
 
-            onProgress(0.97f, "Finalizing MP4 & saving to device...")
+            onProgress(0.97f, "MP4 তৈরি ও ফোনে সংরক্ষণ করা হচ্ছে...")
             if (muxerStarted) {
                 activeMuxer.stop()
                 muxerStarted = false
@@ -288,7 +296,7 @@ object VideoExportEngine {
             muxer = null
 
             val galleryUri = saveMp4ToDeviceGallery(context, outFile)
-            onProgress(1.0f, "Export complete!")
+            onProgress(1.0f, "এক্সপোর্ট সম্পন্ন!")
 
             ExportResult(
                 localFile = outFile,

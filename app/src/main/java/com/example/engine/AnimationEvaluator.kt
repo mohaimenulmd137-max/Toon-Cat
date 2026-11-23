@@ -4,6 +4,7 @@ import com.example.domain.model.CameraCutClip
 import com.example.domain.model.CameraMotionType
 import com.example.domain.model.CameraNode
 import com.example.domain.model.CharacterPose
+import com.example.domain.model.CharacterViewAngle
 import com.example.domain.model.EasingType
 import com.example.domain.model.EyeDirection
 import com.example.domain.model.FacialExpression
@@ -29,6 +30,7 @@ data class EvaluatedCharacter(
     val scale: Float,
     val rotationDeg: Float,
     val facingRight: Boolean,
+    val viewAngle: CharacterViewAngle = CharacterViewAngle.THREE_QUARTER,
     val pose: CharacterPose,
     val expression: FacialExpression,
     val eyeDirection: EyeDirection,
@@ -66,10 +68,18 @@ object AnimationEvaluator {
 
     fun evaluateScene(scene: StudioScene, timeMs: Long): EvaluatedSceneState {
         val evalChars = scene.characters
+            .filter { charInst ->
+                val endMs = charInst.endTimeMs ?: scene.durationMs
+                timeMs in charInst.startTimeMs..endMs
+            }
             .sortedBy { it.zOrder }
             .map { charInst -> evaluateCharacter(scene, charInst, timeMs) }
 
         val evalProps = scene.props
+            .filter { prop ->
+                val endMs = prop.endTimeMs ?: scene.durationMs
+                timeMs in prop.startTimeMs..endMs
+            }
             .sortedBy { it.zOrder }
             .map { prop -> evaluateProp(scene, prop, evalChars, timeMs) }
 
@@ -90,9 +100,13 @@ object AnimationEvaluator {
     ): EvaluatedCharacter {
         var posX = interpolateFloatKeyframes(scene.keyframes, inst.id, KeyframeTargetType.CHAR_POS_X, timeMs, inst.x)
         var posY = interpolateFloatKeyframes(scene.keyframes, inst.id, KeyframeTargetType.CHAR_POS_Y, timeMs, inst.y)
-        val scale = interpolateFloatKeyframes(scene.keyframes, inst.id, KeyframeTargetType.CHAR_SCALE, timeMs, inst.scale)
+        var scale = interpolateFloatKeyframes(scene.keyframes, inst.id, KeyframeTargetType.CHAR_SCALE, timeMs, inst.scale)
         var rot = interpolateFloatKeyframes(scene.keyframes, inst.id, KeyframeTargetType.CHAR_ROTATION, timeMs, inst.rotationDeg)
         var facingRight = inst.facingRight
+        val kfViewAngle = interpolateStringKeyframe(
+            scene.keyframes, inst.id, KeyframeTargetType.CHAR_VIEW_ANGLE, timeMs
+        )?.let { name -> CharacterViewAngle.entries.find { it.name == name } }
+        var resolvedViewAngle = kfViewAngle ?: inst.viewAngle
 
         // Start with custom pose override or neutral pose
         var basePose = inst.poseOverride ?: CharacterPose()
@@ -106,9 +120,13 @@ object AnimationEvaluator {
             basePose = blendPoses(basePose, motionDelta.pose, 1.0f)
             posX += motionDelta.deltaX
             posY += motionDelta.deltaY
+            scale *= motionDelta.scaleMultiplier
             rot += motionDelta.deltaRot
             if (motionDelta.overrideFacing != null) {
                 facingRight = motionDelta.overrideFacing
+            }
+            if (motionDelta.overrideViewAngle != null) {
+                resolvedViewAngle = motionDelta.overrideViewAngle
             }
         }
 
@@ -170,11 +188,12 @@ object AnimationEvaluator {
 
         return EvaluatedCharacter(
             instance = inst,
-            x = posX.coerceIn(0.05f, 0.95f),
-            y = posY.coerceIn(0.30f, 0.95f),
-            scale = scale.coerceIn(0.4f, 2.5f),
+            x = posX.coerceIn(0.02f, 0.98f),
+            y = posY.coerceIn(0.12f, 0.98f),
+            scale = scale.coerceIn(0.30f, 3.20f),
             rotationDeg = rot,
             facingRight = facingRight,
+            viewAngle = resolvedViewAngle,
             pose = basePose,
             expression = expression,
             eyeDirection = eyeDir,
@@ -239,7 +258,8 @@ object AnimationEvaluator {
         evalChars: List<EvaluatedCharacter>,
         timeMs: Long
     ): EvaluatedCamera {
-        val activeCut: CameraCutClip? = scene.cameraCuts.lastOrNull {
+        val orderedCuts = scene.cameraCuts.sortedBy { it.startTimeMs }
+        val activeCut: CameraCutClip? = orderedCuts.lastOrNull {
             timeMs in it.startTimeMs..it.endTimeMs
         }
         val camNode: CameraNode = activeCut?.let { cut ->
@@ -252,26 +272,69 @@ object AnimationEvaluator {
         var rot = interpolateFloatKeyframes(scene.keyframes, camNode.id, KeyframeTargetType.CAM_ROTATION, timeMs, camNode.rotationDeg)
         var tilt = camNode.tiltDeg
 
-        // Follow character if camera is locked to one
-        if (camNode.followCharacterId != null) {
-            evalChars.find { it.instance.id == camNode.followCharacterId }?.let { target ->
-                panX = (target.x - 0.5f) * 0.85f
-                panY = (target.y - 0.65f) * 0.5f
+        fun targetPoseForChar(charId: String, fallbackZoom: Float): Triple<Float, Float, Float>? {
+            val evalChar = evalChars.find { it.instance.id == charId }
+            val sceneChar = scene.characters.find { it.id == charId }
+            val tx = evalChar?.x ?: sceneChar?.x ?: return null
+            val ty = evalChar?.y ?: sceneChar?.y ?: return null
+            return Triple(
+                (tx - 0.5f).coerceIn(-0.55f, 0.55f),
+                (ty - 0.66f).coerceIn(-0.55f, 0.55f),
+                fallbackZoom
+            )
+        }
+
+        // Base follow character if no cut overrides it
+        if (activeCut?.targetCharacterId == null && camNode.followCharacterId != null) {
+            targetPoseForChar(camNode.followCharacterId, zoom)?.let { (tx, ty, _) ->
+                panX = tx
+                panY = ty
             }
         }
 
-        // Apply active cut dynamic motion
+        // Apply active cut target character & dynamic motion
         if (activeCut != null) {
             val dur = (activeCut.endTimeMs - activeCut.startTimeMs).coerceAtLeast(100L).toFloat()
             val rawT = ((timeMs - activeCut.startTimeMs).toFloat() / dur).coerceIn(0f, 1f)
             val t = applyEasing(rawT, activeCut.easing)
+
+            val cutTargetId = activeCut.targetCharacterId
+            if (cutTargetId != null) {
+                val goalZoom = activeCut.targetZoom ?: maxOf(zoom, 1.45f)
+                val goal = targetPoseForChar(cutTargetId, goalZoom)
+                if (goal != null) {
+                    val (goalPanX, goalPanY, targetZoomVal) = goal
+                    val isSmoothMove = activeCut.motionType == CameraMotionType.SMOOTH_TRANSITION ||
+                        activeCut.motionType == CameraMotionType.PAN ||
+                        activeCut.motionType == CameraMotionType.DOLLY
+                    if (isSmoothMove) {
+                        val prevCut = orderedCuts.lastOrNull {
+                            it.startTimeMs < activeCut.startTimeMs && it.id != activeCut.id
+                        }
+                        val prevPose = prevCut?.targetCharacterId?.let { prevId ->
+                            targetPoseForChar(prevId, prevCut.targetZoom ?: zoom)
+                        } ?: Triple(panX, panY, zoom)
+                        val transMs = minOf(750L, (activeCut.endTimeMs - activeCut.startTimeMs).coerceAtLeast(250L))
+                        val transRaw = ((timeMs - activeCut.startTimeMs).toFloat() / transMs).coerceIn(0f, 1f)
+                        val e = applyEasing(transRaw, activeCut.easing)
+                        panX = prevPose.first + (goalPanX - prevPose.first) * e
+                        panY = prevPose.second + (goalPanY - prevPose.second) * e
+                        zoom = prevPose.third + (targetZoomVal - prevPose.third) * e
+                    } else {
+                        panX = goalPanX
+                        panY = goalPanY
+                        zoom = targetZoomVal
+                    }
+                }
+            }
+
             when (activeCut.motionType) {
-                CameraMotionType.PAN -> panX += (t - 0.5f) * 0.24f
+                CameraMotionType.PAN -> if (cutTargetId == null) panX += (t - 0.5f) * 0.24f
                 CameraMotionType.TILT -> {
                     panY += (0.5f - t) * 0.16f
                     tilt += (t - 0.5f) * 8f
                 }
-                CameraMotionType.ZOOM_IN, CameraMotionType.DOLLY -> zoom *= (1f + t * 0.35f)
+                CameraMotionType.ZOOM_IN, CameraMotionType.DOLLY -> if (cutTargetId == null) zoom *= (1f + t * 0.35f)
                 CameraMotionType.ZOOM_OUT -> zoom *= (1.35f - t * 0.35f)
                 CameraMotionType.TRUCK -> panX += (t - 0.5f) * 0.30f
                 CameraMotionType.ORBIT -> {
@@ -279,12 +342,13 @@ object AnimationEvaluator {
                     rot += sin(t * 2f * PI).toFloat() * 3.5f
                 }
                 CameraMotionType.FOLLOW, CameraMotionType.TRACKING -> {
-                    val followTarget = camNode.followCharacterId?.let { id ->
+                    val targetId = cutTargetId ?: camNode.followCharacterId
+                    val followTarget = targetId?.let { id ->
                         evalChars.find { it.instance.id == id }
                     } ?: evalChars.firstOrNull()
                     if (followTarget != null) {
-                        panX = (followTarget.x - 0.5f) * 0.85f
-                        panY = (followTarget.y - 0.68f) * 0.45f
+                        panX = (followTarget.x - 0.5f).coerceIn(-0.55f, 0.55f)
+                        panY = (followTarget.y - 0.66f).coerceIn(-0.55f, 0.55f)
                     }
                 }
                 CameraMotionType.SHAKE -> {
@@ -297,13 +361,18 @@ object AnimationEvaluator {
             }
         }
 
+        val focusedCharName = activeCut?.targetCharacterId?.let { id ->
+            scene.characters.find { it.id == id }?.name
+        }
+        val activeName = if (focusedCharName != null) "${camNode.name} → $focusedCharName" else camNode.name
+
         return EvaluatedCamera(
             panX = panX.coerceIn(-0.6f, 0.6f),
             panY = panY.coerceIn(-0.6f, 0.6f),
             zoom = zoom.coerceIn(0.55f, 3.0f),
             rotationDeg = rot.coerceIn(-35f, 35f),
             tiltDeg = tilt.coerceIn(-30f, 30f),
-            activeCameraName = camNode.name
+            activeCameraName = activeName
         )
     }
 
@@ -312,7 +381,9 @@ object AnimationEvaluator {
         val deltaX: Float = 0f,
         val deltaY: Float = 0f,
         val deltaRot: Float = 0f,
-        val overrideFacing: Boolean? = null
+        val scaleMultiplier: Float = 1f,
+        val overrideFacing: Boolean? = null,
+        val overrideViewAngle: CharacterViewAngle? = null
     )
 
     private fun evaluateMotionClip(clip: MotionClip, timeMs: Long): MotionDelta {
@@ -352,6 +423,48 @@ object AnimationEvaluator {
                     ).copy(hipOffsetY = -abs(c) * 0.016f * inten),
                     deltaX = travel,
                     overrideFacing = dir > 0
+                )
+            }
+            MotionPreset.WALK_TOWARD -> {
+                val freq = 6.2f
+                val s = sin(elapsedSec * freq)
+                val c = cos(elapsedSec * freq)
+                MotionDelta(
+                    pose = mapPose(
+                        RigJoint.UPPER_LEG_L to s * 20f,
+                        RigJoint.LOWER_LEG_L to (-abs(c) * 24f - 6f),
+                        RigJoint.UPPER_LEG_R to -s * 20f,
+                        RigJoint.LOWER_LEG_R to (-abs(s) * 24f - 6f),
+                        RigJoint.UPPER_ARM_L to -s * 22f,
+                        RigJoint.LOWER_ARM_L to -18f,
+                        RigJoint.UPPER_ARM_R to s * 22f,
+                        RigJoint.LOWER_ARM_R to -18f,
+                        RigJoint.HEAD to sin(elapsedSec * freq * 2f) * 2f
+                    ).copy(hipOffsetY = -abs(c) * 0.018f * inten),
+                    deltaY = progress * 0.08f * inten * clip.speed,
+                    scaleMultiplier = 1f + 0.30f * progress * inten,
+                    overrideViewAngle = CharacterViewAngle.FRONT
+                )
+            }
+            MotionPreset.WALK_AWAY -> {
+                val freq = 6.0f
+                val s = sin(elapsedSec * freq)
+                val c = cos(elapsedSec * freq)
+                MotionDelta(
+                    pose = mapPose(
+                        RigJoint.UPPER_LEG_L to s * 18f,
+                        RigJoint.LOWER_LEG_L to (-abs(c) * 22f - 6f),
+                        RigJoint.UPPER_LEG_R to -s * 18f,
+                        RigJoint.LOWER_LEG_R to (-abs(s) * 22f - 6f),
+                        RigJoint.UPPER_ARM_L to -s * 20f,
+                        RigJoint.LOWER_ARM_L to -16f,
+                        RigJoint.UPPER_ARM_R to s * 20f,
+                        RigJoint.LOWER_ARM_R to -16f,
+                        RigJoint.HEAD to sin(elapsedSec * freq * 2f) * 2f
+                    ).copy(hipOffsetY = -abs(c) * 0.015f * inten),
+                    deltaY = -progress * 0.09f * inten * clip.speed,
+                    scaleMultiplier = (1f - 0.28f * progress * inten).coerceAtLeast(0.45f),
+                    overrideViewAngle = CharacterViewAngle.BACK
                 )
             }
             MotionPreset.RUN, MotionPreset.SPRINT -> {
@@ -433,6 +546,38 @@ object AnimationEvaluator {
                         RigJoint.UPPER_ARM_R to -18f,
                         RigJoint.LOWER_ARM_R to 42f
                     ).copy(hipOffsetY = 0.12f * inten)
+                )
+            }
+            MotionPreset.SIT_FLOOR -> {
+                MotionDelta(
+                    pose = mapPose(
+                        RigJoint.UPPER_LEG_L to 88f,
+                        RigJoint.LOWER_LEG_L to -14f,
+                        RigJoint.UPPER_LEG_R to 84f,
+                        RigJoint.LOWER_LEG_R to -10f,
+                        RigJoint.TORSO to -6f,
+                        RigJoint.HEAD to 4f,
+                        RigJoint.UPPER_ARM_L to 24f,
+                        RigJoint.LOWER_ARM_L to -32f,
+                        RigJoint.UPPER_ARM_R to -24f,
+                        RigJoint.LOWER_ARM_R to 32f
+                    ).copy(hipOffsetY = 0.25f * inten)
+                )
+            }
+            MotionPreset.LIE_DOWN -> {
+                val breathe = sin(elapsedSec * 2.2f) * 2f
+                MotionDelta(
+                    pose = mapPose(
+                        RigJoint.HEAD to (-6f + breathe),
+                        RigJoint.CHEST to breathe * 0.5f,
+                        RigJoint.UPPER_ARM_L to 14f,
+                        RigJoint.LOWER_ARM_L to -18f,
+                        RigJoint.UPPER_ARM_R to -14f,
+                        RigJoint.LOWER_ARM_R to 18f,
+                        RigJoint.UPPER_LEG_L to 8f,
+                        RigJoint.LOWER_LEG_L to -10f
+                    ).copy(hipOffsetY = 0.14f),
+                    deltaRot = 88f * dir
                 )
             }
             MotionPreset.STAND -> {

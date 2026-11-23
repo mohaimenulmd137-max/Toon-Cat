@@ -20,7 +20,8 @@ data class StudioScene(
     val audioClips: List<AudioClip> = emptyList(),
     val cameras: List<CameraNode> = emptyList(),
     val cameraCuts: List<CameraCutClip> = emptyList(),
-    val keyframes: List<Keyframe> = emptyList()
+    val keyframes: List<Keyframe> = emptyList(),
+    val trackOrder: List<TimelineTrackKind> = TimelineTrackKind.entries
 )
 
 @JsonClass(generateAdapter = true)
@@ -39,16 +40,16 @@ data class AnimationProject(
 }
 
 enum class ExportResolution(val label: String, val shortSidePx: Int) {
-    P480("480p SD", 480),
-    P720("720p HD", 720),
-    P1080("1080p Full HD", 1080)
+    P480("৪৮০p এসডি", 480),
+    P720("৭২০p এইচডি", 720),
+    P1080("১০৮০p ফুল এইচডি", 1080)
 }
 
 enum class ExportAspectRatio(val label: String, val widthRatio: Int, val heightRatio: Int) {
-    LANDSCAPE_16_9("16:9 Landscape", 16, 9),
-    PORTRAIT_9_16("9:16 Portrait", 9, 16),
-    SQUARE_1_1("1:1 Square", 1, 1),
-    CINEMA_4_3("4:3 Classic", 4, 3)
+    LANDSCAPE_16_9("১৬:৯ ল্যান্ডস্কেপ", 16, 9),
+    PORTRAIT_9_16("৯:১৬ পোর্ট্রেট", 9, 16),
+    SQUARE_1_1("১:১ বর্গাকার", 1, 1),
+    CINEMA_4_3("৪:৩ ক্লাসিক", 4, 3)
 }
 
 data class ExportConfig(
@@ -78,9 +79,9 @@ data class ExportConfig(
 }
 
 enum class PreviewQuality(val label: String, val scaleFactor: Float) {
-    LOW("Low (Battery Saver)", 0.6f),
-    MEDIUM("Balanced", 0.85f),
-    HIGH("High Studio", 1.0f)
+    LOW("কম (ব্যাটারি সাশ্রয়ী)", 0.6f),
+    MEDIUM("মাঝারি (সুষম)", 0.85f),
+    HIGH("উচ্চ স্টুডিও মান", 1.0f)
 }
 
 data class StudioSettings(
@@ -92,5 +93,5 @@ data class StudioSettings(
     val masterVolume: Float = 0.9f,
     val autosaveEnabled: Boolean = true,
     val performanceMode: Boolean = false,
-    val language: String = "English"
+    val language: String = "বাংলা"
 )

@@ -1,6 +1,11 @@
 package com.example.ui.screens
 
+import android.graphics.Bitmap
 import android.graphics.Paint
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,15 +30,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Slider
@@ -41,7 +51,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.domain.model.BodyAccessory
 import com.example.domain.model.BodyShape
@@ -61,6 +74,7 @@ import com.example.domain.model.BottomClothingStyle
 import com.example.domain.model.CartoonCharacter
 import com.example.domain.model.CharacterPose
 import com.example.domain.model.CharacterStyle
+import com.example.domain.model.CharacterViewAngle
 import com.example.domain.model.EarStyle
 import com.example.domain.model.EyeDirection
 import com.example.domain.model.EyeShape
@@ -84,7 +98,9 @@ import com.example.ui.theme.StudioAmber
 import com.example.ui.theme.StudioCoral
 import com.example.ui.theme.StudioCyan
 import com.example.ui.theme.StudioDeepSlate
+import com.example.ui.theme.StudioMint
 import com.example.ui.theme.StudioObsidian
+import kotlinx.coroutines.delay
 
 private val SkinTones = listOf(0xFFFAD8C0, 0xFFF4C7A1, 0xFFE5A97C, 0xFFC68652, 0xFF8D5524, 0xFF5C3820)
 private val PaletteSwatches = listOf(
@@ -96,25 +112,61 @@ private val PaletteSwatches = listOf(
 fun CharacterStudioScreen(
     characters: List<CartoonCharacter>,
     editingCharacter: CartoonCharacter?,
+    customCharacterBitmaps: Map<String, Bitmap> = emptyMap(),
     onSelectCharacter: (CartoonCharacter) -> Unit,
     onCreateBlank: () -> Unit,
+    onImportCharacterUri: (Uri) -> Unit,
+    onClearCustomSprite: (String) -> Unit,
     onDuplicate: (CartoonCharacter) -> Unit,
     onDelete: (CartoonCharacter) -> Unit,
-    onUpdateCharacter: ((CartoonCharacter) -> CartoonCharacter) -> Unit,
+    onSaveCharacter: (CartoonCharacter) -> Unit,
     onAddToScene: (CartoonCharacter) -> Unit
 ) {
     val active = editingCharacter ?: characters.firstOrNull() ?: return
+    var draftChar by remember(active.id) { mutableStateOf(active) }
+    var hasPendingEdits by remember(active.id) { mutableStateOf(false) }
+
+    // Keep draft synced if external change (e.g. sprite cleared/imported) occurs when not mid-edit
+    LaunchedEffect(active) {
+        if (!hasPendingEdits) {
+            draftChar = active
+        }
+    }
+
+    // Subtle live idle blink in preview so character looks alive while editing
+    var liveBlink by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2800L)
+            liveBlink = 1f
+            delay(130L)
+            liveBlink = 0f
+        }
+    }
+
     var selectedTab by remember { mutableIntStateOf(0) }
     var previewFacingRight by remember { mutableStateOf(true) }
-    var previewExpression by remember { mutableStateOf(active.face.defaultExpression) }
-    val tabs = listOf("Library", "Face", "Hair", "Body", "Clothing")
+    var previewViewAngle by remember { mutableStateOf(CharacterViewAngle.THREE_QUARTER) }
+    var previewExpression by remember(active.id) { mutableStateOf(active.face.defaultExpression) }
+    val tabs = listOf("লাইব্রেরি", "মুখমণ্ডল", "চুল", "শরীর", "পোশাক")
+
+    fun editDraft(transform: (CartoonCharacter) -> CartoonCharacter) {
+        draftChar = transform(draftChar)
+        hasPendingEdits = draftChar != active
+    }
+
+    val characterPhotoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let { onImportCharacterUri(it) }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Live Character Turntable Preview Stage
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(210.dp)
+                .height(220.dp)
                 .background(Brush.verticalGradient(listOf(StudioDeepSlate, StudioObsidian)))
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -125,16 +177,17 @@ fun CharacterStudioScreen(
                     strokeJoin = Paint.Join.ROUND
                 }
                 val eval = EvaluatedCharacter(
-                    instance = SceneCharacterInstance("preview", active.id, active.name),
+                    instance = SceneCharacterInstance("preview", draftChar.id, draftChar.name, viewAngle = previewViewAngle),
                     x = 0.5f,
                     y = 0.88f,
                     scale = 1.65f,
                     rotationDeg = 0f,
                     facingRight = previewFacingRight,
+                    viewAngle = previewViewAngle,
                     pose = CharacterPose(),
                     expression = previewExpression,
                     eyeDirection = EyeDirection.CENTER,
-                    eyeBlinkAmount = 0f,
+                    eyeBlinkAmount = liveBlink,
                     viseme = Viseme.REST,
                     isTalking = false
                 )
@@ -144,34 +197,46 @@ fun CharacterStudioScreen(
                         stageW = size.width,
                         stageH = size.height,
                         evalChar = eval,
-                        character = active,
+                        character = draftChar,
                         isSelected = false,
                         showRig = false,
                         selectedJoint = null,
                         fillPaint = fill,
-                        strokePaint = stroke
+                        strokePaint = stroke,
+                        customSpriteBitmap = customCharacterBitmaps[draftChar.id]
                     )
                 }
             }
 
-            // Preview Overlay Controls
+            // Live Preview Badge & Status
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = StudioObsidian.copy(alpha = 0.78f)
+                    color = StudioObsidian.copy(alpha = 0.82f)
                 ) {
-                    Text(
-                        "${active.name} • ${active.style.label}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = StudioCyan,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (hasPendingEdits) StudioAmber else StudioMint)
+                        )
+                        Text(
+                            "লাইভ প্রিভিউ • ${draftChar.name}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = StudioCyan
+                        )
+                    }
                 }
             }
 
@@ -182,17 +247,39 @@ fun CharacterStudioScreen(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 IconButton(onClick = { previewFacingRight = !previewFacingRight }) {
-                    Icon(Icons.Default.Flip, contentDescription = "Flip character preview", tint = Color.White)
+                    Icon(Icons.Default.Flip, contentDescription = "দিক ঘোরান", tint = Color.White)
                 }
                 Button(
-                    onClick = { onAddToScene(active) },
+                    onClick = {
+                        if (hasPendingEdits) {
+                            onSaveCharacter(draftChar)
+                            hasPendingEdits = false
+                        }
+                        onAddToScene(draftChar)
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = StudioCyan, contentColor = StudioObsidian),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     modifier = Modifier.testTag("add_char_to_scene_btn")
                 ) {
                     Icon(Icons.Default.AddCircle, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Cast in Scene", style = MaterialTheme.typography.labelMedium)
+                    Text("দৃশ্যে যোগ করুন", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+
+            // Bottom-Start View Angle Turntable Chips (Front / 3/4 / Side / Back)
+            LazyRow(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(CharacterViewAngle.entries) { ang ->
+                    FilterChip(
+                        selected = previewViewAngle == ang,
+                        onClick = { previewViewAngle = ang },
+                        label = { Text(ang.label, style = MaterialTheme.typography.labelSmall) }
+                    )
                 }
             }
         }
@@ -209,53 +296,91 @@ fun CharacterStudioScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
             contentPadding = PaddingValues(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             when (selectedTab) {
                 0 -> { // Library & Identity
                     item {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = onCreateBlank) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("New Character")
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            item {
+                                Button(onClick = onCreateBlank) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("নতুন চরিত্র")
+                                }
                             }
-                            IconButton(onClick = { onDuplicate(active) }) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Duplicate character")
+                            item {
+                                Button(
+                                    onClick = {
+                                        characterPhotoPicker.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = StudioMint, contentColor = StudioObsidian),
+                                    modifier = Modifier.testTag("import_char_image_btn")
+                                ) {
+                                    Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("ছবি / PNG ইম্পোর্ট")
+                                }
+                            }
+                            if (draftChar.customSpritePath != null) {
+                                item {
+                                    FilterChip(
+                                        selected = false,
+                                        onClick = { onClearCustomSprite(draftChar.id) },
+                                        label = { Text("২৪-জয়েন্ট রিগ ব্যবহার") },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        }
+                                    )
+                                }
+                            }
+                            item {
+                                IconButton(onClick = { onDuplicate(draftChar) }) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = "চরিত্র কপি করুন")
+                                }
                             }
                             if (characters.size > 1) {
-                                IconButton(onClick = { onDelete(active) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete character", tint = StudioCoral)
+                                item {
+                                    IconButton(onClick = { onDelete(draftChar) }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "চরিত্র মুছুন", tint = StudioCoral)
+                                    }
                                 }
                             }
                         }
                     }
                     item {
                         OutlinedTextField(
-                            value = active.name,
-                            onValueChange = { newName -> onUpdateCharacter { it.copy(name = newName) } },
-                            label = { Text("Character Name") },
+                            value = draftChar.name,
+                            onValueChange = { newName -> editDraft { it.copy(name = newName) } },
+                            label = { Text("ক্যারেক্টারের নাম") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
                     item {
-                        Text("Cartoon Art Style", style = MaterialTheme.typography.titleSmall)
+                        Text("কার্টুন আর্ট স্টাইল", style = MaterialTheme.typography.titleSmall)
                         Spacer(Modifier.height(6.dp))
-                        EnumChipRow(CharacterStyle.entries, active.style, { it.label }) { st ->
-                            onUpdateCharacter { it.copy(style = st) }
+                        EnumChipRow(CharacterStyle.entries, draftChar.style, { it.label }) { st ->
+                            editDraft { it.copy(style = st) }
                         }
                     }
                     item {
-                        Text("Character Library (${characters.size})", style = MaterialTheme.typography.titleSmall)
+                        Text("ক্যারেক্টার লাইব্রেরি (${characters.size}টি)", style = MaterialTheme.typography.titleSmall)
                         Spacer(Modifier.height(6.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(characters, key = { it.id }) { ch ->
-                                val isSel = ch.id == active.id
+                                val isSel = ch.id == draftChar.id
                                 Surface(
-                                    onClick = { onSelectCharacter(ch) },
+                                    onClick = {
+                                        hasPendingEdits = false
+                                        onSelectCharacter(ch)
+                                    },
                                     shape = RoundedCornerShape(12.dp),
                                     color = if (isSel) StudioCyan.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceContainer,
                                     modifier = Modifier.border(
@@ -275,167 +400,220 @@ fun CharacterStudioScreen(
                 }
                 1 -> { // Face
                     item {
-                        Text("Skin Tone", style = MaterialTheme.typography.titleSmall)
-                        ColorSwatchRow(SkinTones, active.face.skinToneHex) { hex ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(skinToneHex = hex)) }
+                        Text("ত্বকের রঙ", style = MaterialTheme.typography.titleSmall)
+                        ColorSwatchRow(SkinTones, draftChar.face.skinToneHex) { hex ->
+                            editDraft { it.copy(face = it.face.copy(skinToneHex = hex)) }
                         }
                     }
                     item {
-                        Text("Face Shape", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(FaceShape.entries, active.face.faceShape, { it.label }) { s ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(faceShape = s)) }
+                        Text("মুখের আকৃতি", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(FaceShape.entries, draftChar.face.faceShape, { it.label }) { s ->
+                            editDraft { it.copy(face = it.face.copy(faceShape = s)) }
                         }
                     }
                     item {
-                        LabeledSlider("Head Size", active.face.headSize, 0.75f..1.35f) { v ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(headSize = v)) }
+                        LabeledSlider("মাথার আকার", draftChar.face.headSize, 0.75f..1.35f) { v ->
+                            editDraft { it.copy(face = it.face.copy(headSize = v)) }
                         }
                     }
                     item {
-                        Text("Eye Shape & Color", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(EyeShape.entries, active.face.eyeShape, { it.label }) { e ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(eyeShape = e)) }
+                        Text("চোখের ধরন ও রঙ", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(EyeShape.entries, draftChar.face.eyeShape, { it.label }) { e ->
+                            editDraft { it.copy(face = it.face.copy(eyeShape = e)) }
                         }
                         Spacer(Modifier.height(6.dp))
-                        ColorSwatchRow(PaletteSwatches, active.face.eyeColorHex) { hex ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(eyeColorHex = hex)) }
+                        ColorSwatchRow(PaletteSwatches, draftChar.face.eyeColorHex) { hex ->
+                            editDraft { it.copy(face = it.face.copy(eyeColorHex = hex)) }
                         }
-                        LabeledSlider("Eye Size", active.face.eyeSize, 0.75f..1.35f) { v ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(eyeSize = v)) }
-                        }
-                    }
-                    item {
-                        Text("Eyebrows", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(EyebrowStyle.entries, active.face.eyebrowStyle, { it.label }) { b ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(eyebrowStyle = b)) }
+                        LabeledSlider("চোখের আকার", draftChar.face.eyeSize, 0.75f..1.35f) { v ->
+                            editDraft { it.copy(face = it.face.copy(eyeSize = v)) }
                         }
                     }
                     item {
-                        Text("Nose & Ears", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(NoseStyle.entries, active.face.noseStyle, { it.label }) { n ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(noseStyle = n)) }
+                        Text("ভ্রুয়ের ধরন", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(EyebrowStyle.entries, draftChar.face.eyebrowStyle, { it.label }) { b ->
+                            editDraft { it.copy(face = it.face.copy(eyebrowStyle = b)) }
+                        }
+                    }
+                    item {
+                        Text("নাক ও কান", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(NoseStyle.entries, draftChar.face.noseStyle, { it.label }) { n ->
+                            editDraft { it.copy(face = it.face.copy(noseStyle = n)) }
                         }
                         Spacer(Modifier.height(6.dp))
-                        EnumChipRow(EarStyle.entries, active.face.earStyle, { it.label }) { er ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(earStyle = er)) }
+                        EnumChipRow(EarStyle.entries, draftChar.face.earStyle, { it.label }) { er ->
+                            editDraft { it.copy(face = it.face.copy(earStyle = er)) }
                         }
                     }
                     item {
-                        Text("Mouth, Teeth & Preview Expression", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(MouthStyle.entries, active.face.mouthStyle, { it.label }) { m ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(mouthStyle = m)) }
+                        Text("মুখ, দাঁত ও প্রিভিউ ইমোশন", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(MouthStyle.entries, draftChar.face.mouthStyle, { it.label }) { m ->
+                            editDraft { it.copy(face = it.face.copy(mouthStyle = m)) }
                         }
                         Spacer(Modifier.height(6.dp))
-                        EnumChipRow(TeethStyle.entries, active.face.teethStyle, { it.label }) { t ->
-                            onUpdateCharacter { it.copy(face = it.face.copy(teethStyle = t)) }
+                        EnumChipRow(TeethStyle.entries, draftChar.face.teethStyle, { it.label }) { t ->
+                            editDraft { it.copy(face = it.face.copy(teethStyle = t)) }
                         }
                         Spacer(Modifier.height(6.dp))
                         EnumChipRow(FacialExpression.entries, previewExpression, { it.label }) { exp ->
                             previewExpression = exp
-                            onUpdateCharacter { it.copy(face = it.face.copy(defaultExpression = exp)) }
+                            editDraft { it.copy(face = it.face.copy(defaultExpression = exp)) }
                         }
                     }
                 }
                 2 -> { // Hair
                     item {
-                        Text("Hair Style", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(HairStyle.entries, active.hair.style, { it.label }) { hs ->
-                            onUpdateCharacter { it.copy(hair = it.hair.copy(style = hs)) }
+                        Text("চুলের স্টাইল", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(HairStyle.entries, draftChar.hair.style, { it.label }) { hs ->
+                            editDraft { it.copy(hair = it.hair.copy(style = hs)) }
                         }
                     }
                     item {
-                        Text("Hair Color", style = MaterialTheme.typography.titleSmall)
+                        Text("চুলের রঙ", style = MaterialTheme.typography.titleSmall)
                         ColorSwatchRow(
                             listOf(0xFF1E293B, 0xFF3B1F2B, 0xFF78350F, 0xFFD97706, 0xFFFACC15, 0xFFE11D48, 0xFF00B4D8, 0xFF8B5CF6, 0xFFE2E8F0),
-                            active.hair.colorHex
+                            draftChar.hair.colorHex
                         ) { hex ->
-                            onUpdateCharacter { it.copy(hair = it.hair.copy(colorHex = hex)) }
+                            editDraft { it.copy(hair = it.hair.copy(colorHex = hex)) }
                         }
                     }
                     item {
-                        Text("Hair Accessories", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(HairAccessory.entries, active.hair.accessory, { it.label }) { acc ->
-                            onUpdateCharacter { it.copy(hair = it.hair.copy(accessory = acc)) }
+                        Text("চুলের সাজ / অ্যাক্সেসরি", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(HairAccessory.entries, draftChar.hair.accessory, { it.label }) { acc ->
+                            editDraft { it.copy(hair = it.hair.copy(accessory = acc)) }
                         }
                         Spacer(Modifier.height(6.dp))
-                        ColorSwatchRow(PaletteSwatches, active.hair.accessoryColorHex) { hex ->
-                            onUpdateCharacter { it.copy(hair = it.hair.copy(accessoryColorHex = hex)) }
+                        ColorSwatchRow(PaletteSwatches, draftChar.hair.accessoryColorHex) { hex ->
+                            editDraft { it.copy(hair = it.hair.copy(accessoryColorHex = hex)) }
                         }
                     }
                 }
                 3 -> { // Body
                     item {
-                        Text("Body Shape", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(BodyShape.entries, active.body.bodyShape, { it.label }) { bs ->
-                            onUpdateCharacter { it.copy(body = it.body.copy(bodyShape = bs)) }
+                        Text("শরীরের গড়ন", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(BodyShape.entries, draftChar.body.bodyShape, { it.label }) { bs ->
+                            editDraft { it.copy(body = it.body.copy(bodyShape = bs)) }
                         }
                     }
                     item {
-                        LabeledSlider("Body Height", active.body.heightScale, 0.72f..1.35f) { v ->
-                            onUpdateCharacter { it.copy(body = it.body.copy(heightScale = v)) }
+                        LabeledSlider("উচ্চতা", draftChar.body.heightScale, 0.72f..1.35f) { v ->
+                            editDraft { it.copy(body = it.body.copy(heightScale = v)) }
                         }
-                        LabeledSlider("Body Width", active.body.widthScale, 0.72f..1.45f) { v ->
-                            onUpdateCharacter { it.copy(body = it.body.copy(widthScale = v)) }
+                        LabeledSlider("শরীরের চওড়া", draftChar.body.widthScale, 0.72f..1.45f) { v ->
+                            editDraft { it.copy(body = it.body.copy(widthScale = v)) }
                         }
-                        LabeledSlider("Head-to-Body Ratio", active.body.headToBodyRatio, 0.75f..1.40f) { v ->
-                            onUpdateCharacter { it.copy(body = it.body.copy(headToBodyRatio = v)) }
+                        LabeledSlider("মাথা ও শরীরের অনুপাত", draftChar.body.headToBodyRatio, 0.75f..1.40f) { v ->
+                            editDraft { it.copy(body = it.body.copy(headToBodyRatio = v)) }
                         }
-                        LabeledSlider("Arm Size", active.body.armSize, 0.75f..1.35f) { v ->
-                            onUpdateCharacter { it.copy(body = it.body.copy(armSize = v)) }
+                        LabeledSlider("হাতের আকার", draftChar.body.armSize, 0.75f..1.35f) { v ->
+                            editDraft { it.copy(body = it.body.copy(armSize = v)) }
                         }
-                        LabeledSlider("Leg Size", active.body.legSize, 0.75f..1.35f) { v ->
-                            onUpdateCharacter { it.copy(body = it.body.copy(legSize = v)) }
+                        LabeledSlider("পায়ের আকার", draftChar.body.legSize, 0.75f..1.35f) { v ->
+                            editDraft { it.copy(body = it.body.copy(legSize = v)) }
                         }
                     }
                 }
                 4 -> { // Clothing
                     item {
-                        Text("Top Clothing & Color", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(TopClothingStyle.entries, active.clothing.topStyle, { it.label }) { top ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(topStyle = top)) }
+                        Text("উপরের পোশাক ও রঙ", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(TopClothingStyle.entries, draftChar.clothing.topStyle, { it.label }) { top ->
+                            editDraft { it.copy(clothing = it.clothing.copy(topStyle = top)) }
                         }
-                        ColorSwatchRow(PaletteSwatches, active.clothing.topColorHex) { hex ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(topColorHex = hex)) }
-                        }
-                    }
-                    item {
-                        Text("Bottom Clothing & Color", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(BottomClothingStyle.entries, active.clothing.bottomStyle, { it.label }) { bot ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(bottomStyle = bot)) }
-                        }
-                        ColorSwatchRow(PaletteSwatches, active.clothing.bottomColorHex) { hex ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(bottomColorHex = hex)) }
+                        ColorSwatchRow(PaletteSwatches, draftChar.clothing.topColorHex) { hex ->
+                            editDraft { it.copy(clothing = it.clothing.copy(topColorHex = hex)) }
                         }
                     }
                     item {
-                        Text("Shoes & Color", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(ShoesStyle.entries, active.clothing.shoesStyle, { it.label }) { sh ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(shoesStyle = sh)) }
+                        Text("নিচের পোশাক ও রঙ", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(BottomClothingStyle.entries, draftChar.clothing.bottomStyle, { it.label }) { bot ->
+                            editDraft { it.copy(clothing = it.clothing.copy(bottomStyle = bot)) }
                         }
-                        ColorSwatchRow(PaletteSwatches, active.clothing.shoesColorHex) { hex ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(shoesColorHex = hex)) }
+                        ColorSwatchRow(PaletteSwatches, draftChar.clothing.bottomColorHex) { hex ->
+                            editDraft { it.copy(clothing = it.clothing.copy(bottomColorHex = hex)) }
                         }
                     }
                     item {
-                        Text("Hats, Glasses & Accessories", style = MaterialTheme.typography.titleSmall)
-                        EnumChipRow(HatStyle.entries, active.clothing.hatStyle, { it.label }) { hat ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(hatStyle = hat)) }
+                        Text("জুতা ও রঙ", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(ShoesStyle.entries, draftChar.clothing.shoesStyle, { it.label }) { sh ->
+                            editDraft { it.copy(clothing = it.clothing.copy(shoesStyle = sh)) }
                         }
-                        ColorSwatchRow(PaletteSwatches, active.clothing.hatColorHex) { hex ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(hatColorHex = hex)) }
+                        ColorSwatchRow(PaletteSwatches, draftChar.clothing.shoesColorHex) { hex ->
+                            editDraft { it.copy(clothing = it.clothing.copy(shoesColorHex = hex)) }
+                        }
+                    }
+                    item {
+                        Text("টুপি, চশমা ও সাজসজ্জা", style = MaterialTheme.typography.titleSmall)
+                        EnumChipRow(HatStyle.entries, draftChar.clothing.hatStyle, { it.label }) { hat ->
+                            editDraft { it.copy(clothing = it.clothing.copy(hatStyle = hat)) }
+                        }
+                        ColorSwatchRow(PaletteSwatches, draftChar.clothing.hatColorHex) { hex ->
+                            editDraft { it.copy(clothing = it.clothing.copy(hatColorHex = hex)) }
                         }
                         Spacer(Modifier.height(6.dp))
-                        EnumChipRow(GlassesStyle.entries, active.clothing.glassesStyle, { it.label }) { gl ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(glassesStyle = gl)) }
+                        EnumChipRow(GlassesStyle.entries, draftChar.clothing.glassesStyle, { it.label }) { gl ->
+                            editDraft { it.copy(clothing = it.clothing.copy(glassesStyle = gl)) }
                         }
                         Spacer(Modifier.height(6.dp))
-                        EnumChipRow(BodyAccessory.entries, active.clothing.accessory, { it.label }) { acc ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(accessory = acc)) }
+                        EnumChipRow(BodyAccessory.entries, draftChar.clothing.accessory, { it.label }) { acc ->
+                            editDraft { it.copy(clothing = it.clothing.copy(accessory = acc)) }
                         }
-                        ColorSwatchRow(PaletteSwatches, active.clothing.accessoryColorHex) { hex ->
-                            onUpdateCharacter { it.copy(clothing = it.clothing.copy(accessoryColorHex = hex)) }
+                        ColorSwatchRow(PaletteSwatches, draftChar.clothing.accessoryColorHex) { hex ->
+                            editDraft { it.copy(clothing = it.clothing.copy(accessoryColorHex = hex)) }
                         }
                     }
+                }
+            }
+        }
+
+        // Sticky OK / Cancel Confirmation Footer
+        Surface(
+            tonalElevation = 4.dp,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        draftChar = active
+                        previewExpression = active.face.defaultExpression
+                        hasPendingEdits = false
+                    },
+                    enabled = hasPendingEdits,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("char_cancel_btn")
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = if (hasPendingEdits) StudioCoral else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("বাতিল", fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = {
+                        onSaveCharacter(draftChar)
+                        hasPendingEdits = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (hasPendingEdits) StudioMint else StudioCyan,
+                        contentColor = StudioObsidian
+                    ),
+                    modifier = Modifier
+                        .weight(1.3f)
+                        .testTag("char_ok_btn")
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (hasPendingEdits) "ওকে • সংরক্ষণ করুন" else "ওকে (সংরক্ষিত)",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }

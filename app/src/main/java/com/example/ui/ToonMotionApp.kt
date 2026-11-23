@@ -93,10 +93,12 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
     val selectedJoint by viewModel.selectedJoint.collectAsStateWithLifecycle()
     val selectedCameraId by viewModel.selectedCameraId.collectAsStateWithLifecycle()
     val selectedAudioClipId by viewModel.selectedAudioClipId.collectAsStateWithLifecycle()
+    val selectedTimelineClip by viewModel.selectedTimelineClip.collectAsStateWithLifecycle()
     val timelineZoom by viewModel.timelineZoom.collectAsStateWithLifecycle()
     val panelCollapsed by viewModel.panelCollapsed.collectAsStateWithLifecycle()
     val isRecordingVoice by viewModel.isRecordingVoice.collectAsStateWithLifecycle()
     val customBgBitmap by viewModel.customBgBitmap.collectAsStateWithLifecycle()
+    val customCharacterBitmaps by viewModel.customCharacterBitmaps.collectAsStateWithLifecycle()
     val exportState by viewModel.exportState.collectAsStateWithLifecycle()
     val aiState by viewModel.aiState.collectAsStateWithLifecycle()
     val canUndo by viewModel.canUndo.collectAsStateWithLifecycle()
@@ -139,7 +141,7 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                             title = {
                                 Column {
                                     Text(
-                                        text = activeProject?.name ?: "ToonMotion Studio",
+                                        text = activeProject?.name ?: "টুনমোশন স্টুডিও",
                                         style = MaterialTheme.typography.titleMedium,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -156,13 +158,13 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                                     onClick = { viewModel.navigateTo(StudioDestination.PROJECTS) },
                                     modifier = Modifier.testTag("top_projects_btn")
                                 ) {
-                                    Icon(Icons.Default.Folder, contentDescription = "Projects")
+                                    Icon(Icons.Default.Folder, contentDescription = "প্রজেক্টস")
                                 }
                                 IconButton(
                                     onClick = { viewModel.navigateTo(StudioDestination.SETTINGS) },
                                     modifier = Modifier.testTag("top_settings_btn")
                                 ) {
-                                    Icon(Icons.Default.Settings, contentDescription = "Settings")
+                                    Icon(Icons.Default.Settings, contentDescription = "সেটিংস")
                                 }
                             },
                             colors = TopAppBarDefaults.topAppBarColors(
@@ -243,11 +245,16 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                                 CharacterStudioScreen(
                                     characters = characters,
                                     editingCharacter = editingCharacter,
+                                    customCharacterBitmaps = customCharacterBitmaps,
                                     onSelectCharacter = viewModel::selectCharacterToEdit,
                                     onCreateBlank = viewModel::createBlankCharacter,
+                                    onImportCharacterUri = { uri ->
+                                        viewModel.importCustomCharacterUri(uri, alsoAddToScene = true)
+                                    },
+                                    onClearCustomSprite = viewModel::clearCustomSprite,
                                     onDuplicate = viewModel::duplicateCharacter,
                                     onDelete = viewModel::deleteCharacter,
-                                    onUpdateCharacter = viewModel::updateEditingCharacter,
+                                    onSaveCharacter = viewModel::saveCharacterEdits,
                                     onAddToScene = { ch ->
                                         viewModel.addCharacterToActiveScene(ch)
                                         viewModel.navigateTo(StudioDestination.ANIMATION_STUDIO)
@@ -276,7 +283,7 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                                 val scene = proj?.activeScene
                                 if (proj == null || scene == null) {
                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Text("Loading Studio Scene...")
+                                        Text("স্টুডিও দৃশ্য লোড হচ্ছে...")
                                     }
                                 } else {
                                     StudioNleWorkspace(
@@ -295,10 +302,12 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                                         selectedJoint = selectedJoint,
                                         selectedCameraId = selectedCameraId,
                                         selectedAudioClipId = selectedAudioClipId,
+                                        selectedTimelineClip = selectedTimelineClip,
                                         timelineZoom = timelineZoom,
                                         panelCollapsed = panelCollapsed,
                                         isRecordingVoice = isRecordingVoice,
                                         customBgBitmap = customBgBitmap,
+                                        customCharacterBitmaps = customCharacterBitmaps,
                                         canUndo = canUndo,
                                         canRedo = canRedo,
                                         onNavigate = viewModel::navigateTo,
@@ -329,8 +338,14 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                                         onDuplicateSelection = viewModel::duplicateActiveSelection,
                                         onSelectCharacterInstance = viewModel::selectCharacterInstance,
                                         onAddCharacterToScene = viewModel::addCharacterToActiveScene,
+                                        onImportCustomCharacterUri = { uri ->
+                                            viewModel.importCustomCharacterUri(uri, alsoAddToScene = true)
+                                        },
                                         onRemoveCharacterFromScene = viewModel::removeCharacterFromScene,
                                         onUpdateCharacterTransform = viewModel::updateSelectedCharacterTransform,
+                                        onApplyQuickHumanPosture = viewModel::applyQuickHumanPosture,
+                                        onScaleSelectedCharacter = viewModel::scaleSelectedCharacterBy,
+                                        onSetCharacterViewAngle = viewModel::setSelectedCharacterViewAngle,
                                         onAddMotionClip = viewModel::addMotionClip,
                                         onRigControlModeChange = viewModel::setRigControlMode,
                                         onSelectJoint = viewModel::selectJoint,
@@ -341,6 +356,8 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                                         },
                                         onSaveCustomPose = viewModel::saveSelectedPoseToCharacter,
                                         onSetFaceState = viewModel::setCharacterFaceState,
+                                        onSuggestVoiceEmotion = viewModel::suggestVoiceEmotionAtPlayhead,
+                                        onPreviewVoice = viewModel::previewVoice,
                                         onSayDialogue = viewModel::generateDialogueClip,
                                         onApplyInteraction = viewModel::applyMultiCharacterInteraction,
                                         onAddProp = viewModel::addPropToScene,
@@ -375,7 +392,28 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                                         onDeleteKeyframe = viewModel::deleteKeyframe,
                                         onDeleteMotionClip = viewModel::deleteMotionClip,
                                         onTrimMotionClipEnd = viewModel::trimMotionClipEnd,
-                                        onDeleteCameraCut = viewModel::deleteCameraCut
+                                        onDeleteCameraCut = viewModel::deleteCameraCut,
+                                        onSelectTimelineClip = viewModel::selectTimelineClip,
+                                        onMoveTimelineClip = viewModel::moveTimelineClip,
+                                        onResizeTimelineClip = viewModel::resizeTimelineClip,
+                                        onMoveTimelineClipVertically = viewModel::moveTimelineClipVertically,
+                                        onMoveLayerOrder = viewModel::moveLayerOrder,
+                                        onSplitTimelineClip = viewModel::splitTimelineClipAtPlayhead,
+                                        onDuplicateTimelineClip = viewModel::duplicateTimelineClip,
+                                        onDeleteTimelineClip = viewModel::deleteTimelineClip,
+                                        onFocusCameraOnCharacter = { charId ->
+                                            viewModel.focusCameraOnCharacter(charId, createCutAtPlayhead = true, smoothPan = true)
+                                        },
+                                        onResetCameraWide = {
+                                            viewModel.resetCameraToWideView(createCutAtPlayhead = true)
+                                        },
+                                        onGetUndoDepth = viewModel::getUndoDepth,
+                                        onCommitStagedEdit = { snap, depth ->
+                                            viewModel.commitStagedSceneEdit(snap, depth)
+                                        },
+                                        onCancelStagedEdit = { snap, depth ->
+                                            viewModel.restoreSceneSnapshot(snap, depth)
+                                        }
                                     )
                                 }
                             }
@@ -394,9 +432,9 @@ private data class NavItem(
 )
 
 private val PrimaryNavItems = listOf(
-    NavItem(StudioDestination.HOME, "Home", Icons.Default.Home),
-    NavItem(StudioDestination.CHARACTER_STUDIO, "Character", Icons.Default.Person),
-    NavItem(StudioDestination.ANIMATION_STUDIO, "Studio", Icons.Default.Animation),
-    NavItem(StudioDestination.EXPORT_STUDIO, "Export", Icons.Default.Movie),
-    NavItem(StudioDestination.PROJECTS, "Projects", Icons.Default.Folder)
+    NavItem(StudioDestination.HOME, "হোম", Icons.Default.Home),
+    NavItem(StudioDestination.CHARACTER_STUDIO, "ক্যারেক্টার", Icons.Default.Person),
+    NavItem(StudioDestination.ANIMATION_STUDIO, "স্টুডিও", Icons.Default.Animation),
+    NavItem(StudioDestination.EXPORT_STUDIO, "এক্সপোর্ট", Icons.Default.Movie),
+    NavItem(StudioDestination.PROJECTS, "প্রজেক্টস", Icons.Default.Folder)
 )

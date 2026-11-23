@@ -46,7 +46,7 @@ object LipSyncEngine {
         // Fallback text-driven phoneme viseme mapping
         val text = activeClip.dialogueText.trim()
         if (text.isEmpty()) return Viseme.REST
-        val chars = text.lowercase().filter { it.isLetterOrDigit() || it == ' ' }
+        val chars = text.lowercase().filter { it.isLetterOrDigit() || it == ' ' || it in '\u0980'..'\u09FF' }
         if (chars.isEmpty()) return Viseme.REST
 
         val charDuration = (activeClip.effectiveDurationMs / chars.length.coerceAtLeast(1)).coerceIn(45L, 160L)
@@ -55,13 +55,13 @@ object LipSyncEngine {
     }
 
     fun charToViseme(ch: Char): Viseme = when (ch) {
-        'a', 'á', 'ä' -> Viseme.AH
-        'o', 'u', 'w', 'q' -> Viseme.OO
-        'e', 'i', 'y' -> Viseme.EE
-        'm', 'b', 'p' -> Viseme.MM
-        'f', 'v' -> Viseme.FF
-        's', 'z', 'c', 'h' -> Viseme.TH
-        'l', 'n', 'd', 't', 'r', 'g', 'k', 'j' -> Viseme.L_N
+        'a', 'á', 'ä', 'অ', 'আ', 'া' -> Viseme.AH
+        'o', 'u', 'w', 'q', 'উ', 'ঊ', 'ও', 'ঔ', 'ু', 'ূ', 'ো', 'ৌ' -> Viseme.OO
+        'e', 'i', 'y', 'ই', 'ঈ', 'এ', 'ঐ', 'ি', 'ী', 'ে', 'ৈ' -> Viseme.EE
+        'm', 'b', 'p', 'ম', 'ব', 'প', 'ভ' -> Viseme.MM
+        'f', 'v', 'ফ' -> Viseme.FF
+        's', 'z', 'c', 'h', 'স', 'শ', 'ষ', 'হ', 'থ', 'ধ', 'ছ', 'জ' -> Viseme.TH
+        'l', 'n', 'd', 't', 'r', 'g', 'k', 'j', 'ল', 'ন', 'ণ', 'দ', 'ত', 'র', 'ড়', 'ক', 'গ', 'চ', 'ট', 'ড' -> Viseme.L_N
         else -> Viseme.REST
     }
 
@@ -74,9 +74,11 @@ object LipSyncEngine {
             } else {
                 val ch = clean[(i * clean.length) / bins]
                 when (ch) {
-                    ' ', '.', ',', '!', '?' -> 0.06f
-                    'a', 'e', 'i', 'o', 'u' -> 0.78f - ((i % 3) * 0.1f)
-                    'm', 'b', 'p' -> 0.25f
+                    ' ', '.', ',', '!', '?', '।' -> 0.06f
+                    'a', 'e', 'i', 'o', 'u',
+                    'অ', 'আ', 'ই', 'ঈ', 'উ', 'ঊ', 'এ', 'ঐ', 'ও', 'ঔ',
+                    'া', 'ি', 'ী', 'ু', 'ূ', 'ে', 'ৈ', 'ো', 'ৌ' -> 0.78f - ((i % 3) * 0.1f)
+                    'm', 'b', 'p', 'ম', 'ব', 'প' -> 0.25f
                     else -> 0.48f + ((i % 4) * 0.08f)
                 }.coerceIn(0.05f, 0.95f)
             }

@@ -45,7 +45,7 @@ class SettingsDataStore(private val context: Context) {
             masterVolume = prefs[Keys.MASTER_VOLUME] ?: 0.9f,
             autosaveEnabled = prefs[Keys.AUTOSAVE] ?: true,
             performanceMode = prefs[Keys.PERFORMANCE_MODE] ?: false,
-            language = prefs[Keys.LANGUAGE] ?: "English"
+            language = prefs[Keys.LANGUAGE] ?: "বাংলা"
         )
     }
 
@@ -60,7 +60,7 @@ class SettingsDataStore(private val context: Context) {
                 masterVolume = prefs[Keys.MASTER_VOLUME] ?: 0.9f,
                 autosaveEnabled = prefs[Keys.AUTOSAVE] ?: true,
                 performanceMode = prefs[Keys.PERFORMANCE_MODE] ?: false,
-                language = prefs[Keys.LANGUAGE] ?: "English"
+                language = prefs[Keys.LANGUAGE] ?: "বাংলা"
             )
             val next = transform(current)
             prefs[Keys.DARK_MODE] = next.darkMode

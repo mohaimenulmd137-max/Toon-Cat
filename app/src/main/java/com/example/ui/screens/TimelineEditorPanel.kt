@@ -101,7 +101,6 @@ fun TimelineEditorPanel(
     val density = LocalDensity.current
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Keyframe & Zoom Toolbar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -111,11 +110,11 @@ fun TimelineEditorPanel(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton(onClick = { onZoomChange(timelineZoom - 0.25f) }, modifier = Modifier.size(34.dp)) {
-                    Icon(Icons.Default.ZoomOut, contentDescription = "Zoom out timeline", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.ZoomOut, contentDescription = "টাইমলাইন ছোট করুন", modifier = Modifier.size(18.dp))
                 }
                 Text("${(timelineZoom * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
                 IconButton(onClick = { onZoomChange(timelineZoom + 0.25f) }, modifier = Modifier.size(34.dp)) {
-                    Icon(Icons.Default.ZoomIn, contentDescription = "Zoom in timeline", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.ZoomIn, contentDescription = "টাইমলাইন বড় করুন", modifier = Modifier.size(18.dp))
                 }
             }
             Button(
@@ -126,11 +125,10 @@ fun TimelineEditorPanel(
             ) {
                 Icon(Icons.Default.Diamond, contentDescription = null, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("+ Keyframe", style = MaterialTheme.typography.labelSmall)
+                Text("+ কিফ্রেম", style = MaterialTheme.typography.labelSmall)
             }
         }
 
-        // Keyframe Target & Easing Chips
         LazyRow(
             contentPadding = PaddingValues(horizontal = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -151,9 +149,7 @@ fun TimelineEditorPanel(
             }
         }
 
-        // Scrubbing Ruler + 12 Multitrack Lanes
         Row(modifier = Modifier.fillMaxSize()) {
-            // Left Fixed Track Labels Column
             Column(
                 modifier = Modifier
                     .width(92.dp)
@@ -183,7 +179,6 @@ fun TimelineEditorPanel(
                 }
             }
 
-            // Right Horizontally Scrollable Multitrack Timeline Area
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -192,7 +187,6 @@ fun TimelineEditorPanel(
             ) {
                 val trackWidthPx = with(density) { trackWidth.toPx() }.coerceAtLeast(1f)
                 Column(modifier = Modifier.width(trackWidth)) {
-                    // Time Ruler (Drag or Tap to Scrub!)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -216,7 +210,7 @@ fun TimelineEditorPanel(
                         Row(modifier = Modifier.fillMaxWidth()) {
                             for (s in 0 until totalSeconds.toInt().coerceAtLeast(1)) {
                                 Text(
-                                    text = "${s}s",
+                                    text = "${s}সে",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.LightGray,
                                     modifier = Modifier.width(pxPerSec).padding(start = 4.dp, top = 2.dp)
@@ -225,7 +219,6 @@ fun TimelineEditorPanel(
                         }
                     }
 
-                    // 12 Track Lanes
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(TimelineTrackKind.entries) { kind ->
                             TimelineLaneRow(
@@ -242,7 +235,6 @@ fun TimelineEditorPanel(
                     }
                 }
 
-                // Vertical Cyan Playhead Line across all 12 tracks
                 val playheadFrac = (playheadMs.toFloat() / scene.durationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
                 val playheadX = trackWidth * playheadFrac
                 Box(
@@ -341,7 +333,6 @@ private fun TimelineLaneRow(
                 }
             }
             else -> {
-                // Render Keyframe Diamonds matching this track category
                 val matchingKfs = scene.keyframes.filter { kf -> kfMatchesTrack(kf, kind) }
                 matchingKfs.forEach { kf ->
                     val frac = (kf.timeMs / totalMs).coerceIn(0f, 0.98f)
@@ -354,7 +345,7 @@ private fun TimelineLaneRow(
                     ) {
                         Icon(
                             Icons.Default.Diamond,
-                            contentDescription = "Keyframe at ${kf.timeMs}ms (tap to remove)",
+                            contentDescription = "কিফ্রেম",
                             tint = StudioAmber,
                             modifier = Modifier.size(18.dp)
                         )
@@ -400,7 +391,7 @@ private fun ClipPill(
         if (onExtend != null) {
             Icon(
                 Icons.Default.Add,
-                contentDescription = "Extend clip",
+                contentDescription = "ক্লিপ বড় করুন",
                 tint = Color.White,
                 modifier = Modifier.size(14.dp).clickable(onClick = onExtend)
             )
@@ -408,7 +399,7 @@ private fun ClipPill(
         if (onDelete != null) {
             Icon(
                 Icons.Default.Delete,
-                contentDescription = "Delete clip",
+                contentDescription = "ক্লিপ মুছুন",
                 tint = StudioCoral,
                 modifier = Modifier.size(14.dp).clickable(onClick = onDelete)
             )

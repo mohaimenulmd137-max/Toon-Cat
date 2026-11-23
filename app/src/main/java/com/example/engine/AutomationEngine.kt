@@ -34,12 +34,13 @@ object AutomationEngine {
         durationMs: Long,
         speed: Float,
         direction: Int,
-        addFootsteps: Boolean
+        addFootsteps: Boolean,
+        preset: MotionPreset = MotionPreset.WALK
     ): StudioScene {
         val clip = MotionClip(
             id = UUID.randomUUID().toString(),
             characterInstanceId = characterInstanceId,
-            preset = MotionPreset.WALK,
+            preset = preset,
             startTimeMs = startTimeMs,
             endTimeMs = startTimeMs + durationMs,
             speed = speed,
@@ -57,7 +58,7 @@ object AutomationEngine {
             val asset = SoundLibraryCatalog.findById(assetId)
             scene.audioClips + AudioClip(
                 id = UUID.randomUUID().toString(),
-                title = "${asset?.title ?: "Footsteps"} (Auto)",
+                title = "${asset?.title ?: "পায়ের শব্দ"} (অটো)",
                 trackType = AudioTrackType.SFX,
                 sourceType = AudioSourceType.BUILTIN,
                 assetId = assetId,
@@ -91,7 +92,7 @@ object AutomationEngine {
         val peaks = LipSyncEngine.generateWaveformPeaksForDialogue(dialogueText, durationMs)
         val dialogueClip = AudioClip(
             id = UUID.randomUUID().toString(),
-            title = "Dialogue: ${dialogueText.take(18)}",
+            title = "সংলাপ: ${dialogueText.take(18)}",
             trackType = AudioTrackType.DIALOGUE,
             sourceType = AudioSourceType.TTS_OFFLINE,
             characterInstanceId = characterInstanceId,
@@ -129,7 +130,7 @@ object AutomationEngine {
         val foodProp = SceneProp(
             id = UUID.randomUUID().toString(),
             type = PropType.FOOD,
-            label = "Snack",
+            label = "খাবার",
             attachedCharacterId = characterInstanceId,
             attachJoint = RigJoint.HAND_R
         )
@@ -142,7 +143,7 @@ object AutomationEngine {
         )
         val eatAudio = AudioClip(
             id = UUID.randomUUID().toString(),
-            title = "Eating Crunch (Auto)",
+            title = "খাওয়ার শব্দ (অটো)",
             trackType = AudioTrackType.SFX,
             sourceType = AudioSourceType.BUILTIN,
             assetId = "everyday_eat",
@@ -223,7 +224,7 @@ object AutomationEngine {
             newProps = newProps + SceneProp(
                 id = giftId,
                 type = PropType.BOOK,
-                label = "Gift Item",
+                label = "উপহার",
                 x = a.x,
                 y = a.y - 0.14f
             )
@@ -249,7 +250,7 @@ object AutomationEngine {
     fun generateAutoCameraCuts(scene: StudioScene): StudioScene {
         val camWide = CameraNode(
             id = "cam_wide",
-            name = "Cam 1: Wide Scene",
+            name = "ক্যামেরা ১: ওয়াইড দৃশ্য",
             panX = 0f,
             panY = 0.02f,
             zoom = CameraAnglePreset.WIDE_SHOT.zoom,
@@ -260,7 +261,7 @@ object AutomationEngine {
 
         val camA = CameraNode(
             id = "cam_char_a",
-            name = "Cam 2: ${firstChar?.name ?: "Lead"} Close-Up",
+            name = "ক্যামেরা ২: ${firstChar?.name ?: "প্রধান"} ক্লোজ-আপ",
             panX = ((firstChar?.x ?: 0.35f) - 0.5f) * 0.9f,
             panY = -0.10f,
             zoom = 1.68f,
@@ -269,7 +270,7 @@ object AutomationEngine {
         )
         val camB = CameraNode(
             id = "cam_char_b",
-            name = "Cam 3: ${secondChar?.name ?: "Co-Star"} Close-Up",
+            name = "ক্যামেরা ৩: ${secondChar?.name ?: "সহ-অভিনেতা"} ক্লোজ-আপ",
             panX = ((secondChar?.x ?: 0.65f) - 0.5f) * 0.9f,
             panY = -0.10f,
             zoom = 1.68f,

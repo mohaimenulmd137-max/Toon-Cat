@@ -44,7 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -88,9 +87,9 @@ fun ExportStudioScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Text("Video Export Studio (MP4 H.264 + AAC)", style = MaterialTheme.typography.headlineSmall)
+            Text("ভিডিও এক্সপোর্ট স্টুডিও (MP4)", style = MaterialTheme.typography.headlineSmall)
             Text(
-                text = "Active Scene: ${project?.activeScene?.name ?: "None"} • Output ${outW}×${outH} @ ${fps} FPS",
+                text = "সক্রিয় দৃশ্য: ${project?.activeScene?.name ?: "নেই"} • আউটপুট ${outW}×${outH} @ ${fps} FPS",
                 style = MaterialTheme.typography.bodySmall,
                 color = StudioCyan
             )
@@ -99,23 +98,23 @@ fun ExportStudioScreen(
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Resolution", style = MaterialTheme.typography.titleSmall)
+                    Text("রেজোলিউশন (মান)", style = MaterialTheme.typography.titleSmall)
                     EnumChipRow(ExportResolution.entries, resolution, { it.label }) { resolution = it }
 
-                    Text("Frame Rate", style = MaterialTheme.typography.titleSmall)
+                    Text("ফ্রেম রেট (FPS)", style = MaterialTheme.typography.titleSmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(24, 25, 30, 60).forEach { f ->
                             FilterChip(selected = fps == f, onClick = { fps = f }, label = { Text("$f FPS") })
                         }
                     }
 
-                    Text("Aspect Ratio", style = MaterialTheme.typography.titleSmall)
+                    Text("স্ক্রিনের অনুপাত", style = MaterialTheme.typography.titleSmall)
                     EnumChipRow(ExportAspectRatio.entries, aspectRatio, { it.label }) { aspectRatio = it }
 
-                    Text("Audio Track Mix", style = MaterialTheme.typography.titleSmall)
-                    ToggleRow("Mix Dialogue & Voice", includeDialogue) { includeDialogue = it }
-                    ToggleRow("Mix Sound Effects", includeSfx) { includeSfx = it }
-                    ToggleRow("Mix Background Music", includeMusic) { includeMusic = it }
+                    Text("অডিও ট্র্যাক মিক্স", style = MaterialTheme.typography.titleSmall)
+                    ToggleRow("সংলাপ ও ভয়েস যোগ করুন", includeDialogue) { includeDialogue = it }
+                    ToggleRow("সাউন্ড এফেক্ট যোগ করুন", includeSfx) { includeSfx = it }
+                    ToggleRow("ব্যাকগ্রাউন্ড মিউজিক যোগ করুন", includeMusic) { includeMusic = it }
                 }
             }
         }
@@ -134,7 +133,7 @@ fun ExportStudioScreen(
                     ) {
                         Icon(Icons.Default.Movie, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Render & Save MP4 Video")
+                        Text("MP4 ভিডিও রেন্ডার ও সেভ করুন")
                     }
                 }
                 is ExportUiState.Exporting -> {
@@ -154,7 +153,7 @@ fun ExportStudioScreen(
                                 OutlinedButton(onClick = onCancelExport) {
                                     Icon(Icons.Default.Cancel, contentDescription = null, tint = StudioCoral)
                                     Spacer(Modifier.width(4.dp))
-                                    Text("Cancel")
+                                    Text("বাতিল")
                                 }
                             }
                         }
@@ -170,13 +169,12 @@ fun ExportStudioScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StudioMint)
                                 Spacer(Modifier.width(8.dp))
-                                Text("Exported Real MP4 Video!", style = MaterialTheme.typography.titleMedium, color = StudioMint)
+                                Text("MP4 ভিডিও সফলভাবে তৈরি হয়েছে!", style = MaterialTheme.typography.titleMedium, color = StudioMint)
                             }
                             Text(
-                                text = "${res.width}×${res.height} • ${res.fps} FPS • ${(res.fileSizeBytes / 1024L)} KB\nSaved to ${if (res.galleryUri != null) "Movies/ToonMotion Studio" else res.localFile.name}",
+                                text = "${res.width}×${res.height} • ${res.fps} FPS • ${(res.fileSizeBytes / 1024L)} KB\nসংরক্ষিত: ${if (res.galleryUri != null) "গ্যালারি (Movies/ToonMotion Studio)" else res.localFile.name}",
                                 style = MaterialTheme.typography.bodySmall
                             )
-                            // Real Playable In-App VideoView Preview
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -212,16 +210,16 @@ fun ExportStudioScreen(
                                             putExtra(Intent.EXTRA_STREAM, shareUri)
                                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }
-                                        context.startActivity(Intent.createChooser(intent, "Share ToonMotion Video"))
+                                        context.startActivity(Intent.createChooser(intent, "ভিডিও শেয়ার করুন"))
                                     },
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("Share MP4")
+                                    Text("শেয়ার করুন")
                                 }
                                 OutlinedButton(onClick = onResetExport, modifier = Modifier.weight(1f)) {
-                                    Text("Export Another")
+                                    Text("আরেকটি এক্সপোর্ট")
                                 }
                             }
                         }
@@ -230,8 +228,8 @@ fun ExportStudioScreen(
                 is ExportUiState.Error -> {
                     Card(colors = CardDefaults.cardColors(containerColor = StudioCoral.copy(alpha = 0.16f))) {
                         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Export Error: ${exportState.message}", style = MaterialTheme.typography.bodyMedium, color = StudioCoral)
-                            OutlinedButton(onClick = onResetExport) { Text("Dismiss") }
+                            Text("এক্সপোর্ট ত্রুটি: ${exportState.message}", style = MaterialTheme.typography.bodyMedium, color = StudioCoral)
+                            OutlinedButton(onClick = onResetExport) { Text("বন্ধ করুন") }
                         }
                     }
                 }
@@ -252,18 +250,18 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Studio Settings", style = MaterialTheme.typography.headlineSmall)
+            Text("স্টুডিও সেটিংস", style = MaterialTheme.typography.headlineSmall)
         }
 
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Appearance & Theme", style = MaterialTheme.typography.titleSmall, color = StudioCyan)
-                    ToggleRow("Dark Studio Interface", settings.darkMode) { dark ->
+                    Text("থিম ও ভাষা", style = MaterialTheme.typography.titleSmall, color = StudioCyan)
+                    ToggleRow("ডার্ক স্টুডিও ইন্টারফেস", settings.darkMode) { dark ->
                         onUpdateSettings { it.copy(darkMode = dark) }
                     }
-                    Text("Interface Language", style = MaterialTheme.typography.bodyMedium)
-                    EnumChipRow(listOf("English", "Spanish", "French", "Japanese", "Arabic"), settings.language, { it }) { lang ->
+                    Text("অ্যাপের ভাষা", style = MaterialTheme.typography.bodyMedium)
+                    EnumChipRow(listOf("বাংলা", "English", "হিন্দি", "আরবি"), settings.language, { it }) { lang ->
                         onUpdateSettings { it.copy(language = lang) }
                     }
                 }
@@ -273,14 +271,14 @@ fun SettingsScreen(
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Performance & Playback Quality", style = MaterialTheme.typography.titleSmall, color = StudioCyan)
+                    Text("পারফরম্যান্স ও প্রিভিউ মান", style = MaterialTheme.typography.titleSmall, color = StudioCyan)
                     EnumChipRow(PreviewQuality.entries, settings.previewQuality, { it.label }) { pq ->
                         onUpdateSettings { it.copy(previewQuality = pq) }
                     }
-                    ToggleRow("High Quality Animation Curves", settings.highQualityAnimation) { hq ->
+                    ToggleRow("উচ্চ মানের মসৃণ অ্যানিমেশন", settings.highQualityAnimation) { hq ->
                         onUpdateSettings { it.copy(highQualityAnimation = hq) }
                     }
-                    ToggleRow("Battery / Low-Performance Mode", settings.performanceMode) { pm ->
+                    ToggleRow("ব্যাটারি / হালকা পারফরম্যান্স মোড", settings.performanceMode) { pm ->
                         onUpdateSettings { it.copy(performanceMode = pm) }
                     }
                 }
@@ -290,8 +288,8 @@ fun SettingsScreen(
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Defaults, Audio & Storage", style = MaterialTheme.typography.titleSmall, color = StudioCyan)
-                    Text("Default Frame Rate", style = MaterialTheme.typography.bodyMedium)
+                    Text("ডিফল্ট সেটিংস ও স্টোরেজ", style = MaterialTheme.typography.titleSmall, color = StudioCyan)
+                    Text("ডিফল্ট ফ্রেম রেট", style = MaterialTheme.typography.bodyMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(24, 25, 30, 60).forEach { f ->
                             FilterChip(selected = settings.defaultFps == f, onClick = {
@@ -299,20 +297,20 @@ fun SettingsScreen(
                             }, label = { Text("$f FPS") })
                         }
                     }
-                    Text("Default Export Resolution", style = MaterialTheme.typography.bodyMedium)
+                    Text("ডিফল্ট এক্সপোর্ট মান", style = MaterialTheme.typography.bodyMedium)
                     EnumChipRow(ExportResolution.entries, settings.defaultResolution, { it.label }) { res ->
                         onUpdateSettings { it.copy(defaultResolution = res) }
                     }
-                    LabeledSlider("Master Studio Audio Volume", settings.masterVolume, 0f..1.2f, { "${(it * 100).toInt()}%" }) { vol ->
+                    LabeledSlider("মাস্টার স্টুডিও ভলিউম", settings.masterVolume, 0f..1.2f, { "${(it * 100).toInt()}%" }) { vol ->
                         onUpdateSettings { it.copy(masterVolume = vol) }
                     }
-                    ToggleRow("Automatic Project Autosave", settings.autosaveEnabled) { auto ->
+                    ToggleRow("অটোমেটিক প্রজেক্ট সেভ", settings.autosaveEnabled) { auto ->
                         onUpdateSettings { it.copy(autosaveEnabled = auto) }
                     }
                     OutlinedButton(onClick = onClearCache, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Clear Cached Renders & Sound Cache")
+                        Text("অস্থায়ী রেন্ডার ও সাউন্ড ক্যাশ পরিষ্কার করুন")
                     }
                 }
             }

@@ -134,7 +134,7 @@ fun StagePreviewViewport(
                         .size(40.dp)
                         .testTag("undo_button")
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo")
+                    Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "আগের ধাপ")
                 }
                 IconButton(
                     onClick = onRedo,
@@ -143,7 +143,7 @@ fun StagePreviewViewport(
                         .size(40.dp)
                         .testTag("redo_button")
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
+                    Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "পরের ধাপ")
                 }
                 Spacer(Modifier.width(4.dp))
                 Surface(
@@ -165,7 +165,7 @@ fun StagePreviewViewport(
                     onClick = { onStepFrame(-1) },
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous frame", modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.SkipPrevious, contentDescription = "আগের ফ্রেম", modifier = Modifier.size(20.dp))
                 }
                 IconButton(
                     onClick = onTogglePlay,
@@ -177,7 +177,7 @@ fun StagePreviewViewport(
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        contentDescription = if (isPlaying) "বিরতি" else "চালান",
                         tint = StudioCyan
                     )
                 }
@@ -185,13 +185,13 @@ fun StagePreviewViewport(
                     onClick = onStop,
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Default.Stop, contentDescription = "Stop", modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Stop, contentDescription = "থামান", modifier = Modifier.size(20.dp))
                 }
                 IconButton(
                     onClick = { onStepFrame(1) },
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next frame", modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.SkipNext, contentDescription = "পরের ফ্রেম", modifier = Modifier.size(20.dp))
                 }
                 IconButton(
                     onClick = onToggleLoop,
@@ -199,7 +199,7 @@ fun StagePreviewViewport(
                 ) {
                     Icon(
                         Icons.Default.Repeat,
-                        contentDescription = "Toggle loop",
+                        contentDescription = "লুপ চালু/বন্ধ",
                         tint = if (loopPlayback) StudioAmber else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
@@ -222,7 +222,7 @@ fun StagePreviewViewport(
                 ) {
                     Icon(
                         if (panelCollapsed) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = "Toggle panel collapse"
+                        contentDescription = "প্যানেল ছোট/বড়"
                     )
                 }
             }

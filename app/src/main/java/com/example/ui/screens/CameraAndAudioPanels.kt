@@ -76,6 +76,8 @@ import com.example.domain.model.CameraNode
 import com.example.domain.model.SoundAsset
 import com.example.domain.model.SoundCategory
 import com.example.domain.model.StudioScene
+import com.example.domain.model.VoiceCharacterType
+import com.example.domain.model.VoiceEmotion
 import com.example.engine.SoundLibraryCatalog
 import com.example.ui.theme.StudioAmber
 import com.example.ui.theme.StudioCoral
@@ -96,7 +98,9 @@ fun CameraStudioPanel(
     onAddCameraCut: (String, CameraMotionType) -> Unit,
     onSetFollowCharacter: (String?) -> Unit,
     onRunAiAutoCamera: () -> Unit,
-    onEnterCameraTouchMode: () -> Unit
+    onEnterCameraTouchMode: () -> Unit,
+    onFocusCharacterAtPlayhead: (String) -> Unit = {},
+    onResetWideAtPlayhead: () -> Unit = {}
 ) {
     val activeCam = scene.cameras.find { it.id == selectedCameraId } ?: scene.cameras.firstOrNull()
 
@@ -105,18 +109,42 @@ fun CameraStudioPanel(
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        if (scene.characters.isNotEmpty()) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("প্লেহেডে ক্যামেরা ফোকাস পরিবর্তন করুন", style = MaterialTheme.typography.titleSmall, color = StudioAmber)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(scene.characters, key = { it.id }) { ch ->
+                                FilledTonalButton(onClick = { onFocusCharacterAtPlayhead(ch.id) }) {
+                                    Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("ক্যামেরা → ${ch.name}")
+                                }
+                            }
+                            item {
+                                OutlinedButton(onClick = onResetWideAtPlayhead) {
+                                    Text("পুরো দৃশ্য (ওয়াইড)")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Multi-Camera Rig (${scene.cameras.size})", style = MaterialTheme.typography.titleSmall)
+                Text("মাল্টি-ক্যামেরা রিগ (${scene.cameras.size}টি)", style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilledTonalButton(onClick = onEnterCameraTouchMode) {
                         Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Touch Pan", style = MaterialTheme.typography.labelSmall)
+                        Text("টাচ প্যান", style = MaterialTheme.typography.labelSmall)
                     }
                     Button(
                         onClick = onRunAiAutoCamera,
@@ -124,7 +152,7 @@ fun CameraStudioPanel(
                     ) {
                         Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("AI Auto Cam", style = MaterialTheme.typography.labelSmall)
+                        Text("অটো ক্যামেরা", style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
@@ -138,9 +166,9 @@ fun CameraStudioPanel(
                     )
                 }
                 item {
-                    OutlinedButton(onClick = { onAddCamera("Cam ${scene.cameras.size + 1}", CameraAnglePreset.CLOSE_UP, null) }) {
+                    OutlinedButton(onClick = { onAddCamera("ক্যামেরা ${scene.cameras.size + 1}", CameraAnglePreset.CLOSE_UP, null) }) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Text("Add Cam")
+                        Text("ক্যামেরা যোগ")
                     }
                 }
             }
@@ -150,33 +178,33 @@ fun CameraStudioPanel(
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Camera Position & Lens (${activeCam.name})", style = MaterialTheme.typography.titleSmall, color = StudioCyan)
-                        LabeledSlider("Zoom (Distance)", activeCam.zoom, 0.55f..2.6f, { "%.2fx".format(it) }) { z ->
+                        Text("ক্যামেরার অবস্থান ও লেন্স (${activeCam.name})", style = MaterialTheme.typography.titleSmall, color = StudioCyan)
+                        LabeledSlider("জুম (দূরত্ব)", activeCam.zoom, 0.55f..2.6f, { "%.2fx".format(it) }) { z ->
                             onUpdateCamera(activeCam.id) { it.copy(zoom = z) }
                         }
-                        LabeledSlider("Pan Horizontal (Left/Right)", activeCam.panX, -0.55f..0.55f) { px ->
+                        LabeledSlider("ডানে / বামে প্যান", activeCam.panX, -0.55f..0.55f) { px ->
                             onUpdateCamera(activeCam.id) { it.copy(panX = px, followCharacterId = null) }
                         }
-                        LabeledSlider("Pan Vertical (Up/Down)", activeCam.panY, -0.55f..0.55f) { py ->
+                        LabeledSlider("উপরে / নিচে প্যান", activeCam.panY, -0.55f..0.55f) { py ->
                             onUpdateCamera(activeCam.id) { it.copy(panY = py, followCharacterId = null) }
                         }
-                        LabeledSlider("Dutch Rotation", activeCam.rotationDeg, -35f..35f, { "${it.toInt()}°" }) { r ->
+                        LabeledSlider("ক্যামেরা কাত / ঘূর্ণন", activeCam.rotationDeg, -35f..35f, { "${it.toInt()}°" }) { r ->
                             onUpdateCamera(activeCam.id) { it.copy(rotationDeg = r) }
                         }
-                        Text("Follow / Track Character", style = MaterialTheme.typography.labelMedium)
+                        Text("ক্যারেক্টার অনুসরণ (ফলো)", style = MaterialTheme.typography.labelMedium)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             item {
                                 FilterChip(
                                     selected = activeCam.followCharacterId == null,
                                     onClick = { onSetFollowCharacter(null) },
-                                    label = { Text("Manual") }
+                                    label = { Text("ম্যানুয়াল") }
                                 )
                             }
                             items(scene.characters, key = { it.id }) { ch ->
                                 FilterChip(
                                     selected = activeCam.followCharacterId == ch.id,
                                     onClick = { onSetFollowCharacter(ch.id) },
-                                    label = { Text("Track ${ch.name}") }
+                                    label = { Text("ফলো: ${ch.name}") }
                                 )
                             }
                         }
@@ -185,7 +213,7 @@ fun CameraStudioPanel(
             }
 
             item {
-                Text("17 Camera Angles", style = MaterialTheme.typography.titleSmall)
+                Text("১৭টি ক্যামেরা অ্যাঙ্গেল", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.height(6.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(CameraAnglePreset.entries) { angle ->
@@ -199,7 +227,7 @@ fun CameraStudioPanel(
             }
 
             item {
-                Text("10 Cinematic Camera Presets (Adds Cut at Playhead)", style = MaterialTheme.typography.titleSmall)
+                Text("১০টি সিনেমাটিক ক্যামেরা প্রিসেট (প্লেহেডে যোগ হবে)", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.height(6.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(CameraMotionPreset.entries) { preset ->
@@ -211,7 +239,7 @@ fun CameraStudioPanel(
             }
 
             item {
-                Text("Add Camera Movement Cut at Playhead", style = MaterialTheme.typography.titleSmall)
+                Text("প্লেহেডে ক্যামেরা মুভমেন্ট কাট যোগ করুন", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.height(6.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(CameraMotionType.entries) { mType ->
@@ -236,7 +264,9 @@ fun AudioStudioPanel(
     onAddAsset: (SoundAsset) -> Unit,
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
-    onGenerateDialogue: (String, Float, Float) -> Unit,
+    onSuggestVoiceEmotion: (String?) -> VoiceEmotion,
+    onPreviewVoice: (String, VoiceCharacterType, VoiceEmotion, Float, Float) -> Unit,
+    onGenerateDialogue: (String, Float, Float, VoiceCharacterType, VoiceEmotion, Boolean, Boolean) -> Unit,
     onImportAudioUri: (Uri, AudioTrackType) -> Unit,
     onPreviewClip: (AudioClip) -> Unit,
     onUpdateClip: (String, (AudioClip) -> AudioClip) -> Unit,
@@ -247,7 +277,7 @@ fun AudioStudioPanel(
 ) {
     val context = LocalContext.current
     var subTab by remember(initialSubTab) { mutableIntStateOf(initialSubTab) }
-    val subTabs = listOf("Sound Library", "Voice Studio", "Clip Mixer & Waveform")
+    val subTabs = listOf("সাউন্ড লাইব্রেরি", "ভয়েস ও ইমোশন স্টুডিও", "ক্লিপ মিক্সার ও ওয়েভফর্ম")
 
     var hasMicPermission by remember {
         mutableStateOf(
@@ -305,17 +335,17 @@ fun AudioStudioPanel(
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(asset.title, style = MaterialTheme.typography.titleSmall)
                                             Text(
-                                                "${asset.durationMs}ms ${if (asset.isLoopable) "• Loopable" else ""}",
+                                                "${asset.durationMs} মি.সে. ${if (asset.isLoopable) "• লুপযোগ্য" else ""}",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                             IconButton(onClick = { onPreviewAsset(asset) }) {
-                                                Icon(Icons.Default.PlayArrow, contentDescription = "Preview sound", tint = StudioCyan)
+                                                Icon(Icons.Default.PlayArrow, contentDescription = "শব্দ শুনুন", tint = StudioCyan)
                                             }
                                             FilledTonalButton(onClick = { onAddAsset(asset) }) {
-                                                Text("Add", style = MaterialTheme.typography.labelMedium)
+                                                Text("যোগ করুন", style = MaterialTheme.typography.labelMedium)
                                             }
                                         }
                                     }
@@ -324,17 +354,23 @@ fun AudioStudioPanel(
                         }
                     }
                 }
-                1 -> { // Voice Studio
+                1 -> { // Voice & Emotion Studio
                     item {
-                        var dialogueText by remember { mutableStateOf("Hey everyone, let's animate this scene!") }
+                        var dialogueText by remember { mutableStateOf("আরে বন্ধু, কেমন আছো? চলো একসাথে কাজ শুরু করি!") }
+                        var voiceChar by remember { mutableStateOf(VoiceCharacterType.MALE_ADULT) }
+                        var voiceEmotion by remember(selectedCharInstanceId) {
+                            mutableStateOf(onSuggestVoiceEmotion(selectedCharInstanceId))
+                        }
+                        var syncExpr by remember { mutableStateOf(true) }
+                        var syncMotion by remember { mutableStateOf(true) }
                         var pitch by remember { mutableFloatStateOf(1.0f) }
                         var speed by remember { mutableFloatStateOf(1.0f) }
-                        val targetCharName = scene.characters.find { it.id == selectedCharInstanceId }?.name ?: "Selected Character"
+                        val targetCharName = scene.characters.find { it.id == selectedCharInstanceId }?.name ?: "নির্বাচিত চরিত্র"
 
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Text("Microphone Voice Recorder ($targetCharName)", style = MaterialTheme.typography.titleSmall)
+                                    Text("মাইক্রোফোন ভয়েস রেকর্ডার ($targetCharName)", style = MaterialTheme.typography.titleSmall)
                                     Button(
                                         onClick = {
                                             if (isRecordingVoice) {
@@ -355,7 +391,7 @@ fun AudioStudioPanel(
                                     ) {
                                         Icon(if (isRecordingVoice) Icons.Default.Stop else Icons.Default.Mic, contentDescription = null)
                                         Spacer(Modifier.width(6.dp))
-                                        Text(if (isRecordingVoice) "Stop & Save Mic Recording" else "Record Voice from Microphone")
+                                        Text(if (isRecordingVoice) "রেকর্ডিং থামান ও সেভ করুন" else "মাইক্রোফোনে ভয়েস রেকর্ড করুন")
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         OutlinedButton(
@@ -367,7 +403,7 @@ fun AudioStudioPanel(
                                         ) {
                                             Icon(Icons.Default.AudioFile, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text("Import Voice")
+                                            Text("ভয়েস ইম্পোর্ট")
                                         }
                                         OutlinedButton(
                                             onClick = {
@@ -378,7 +414,7 @@ fun AudioStudioPanel(
                                         ) {
                                             Icon(Icons.Default.AudioFile, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text("Import Music")
+                                            Text("মিউজিক ইম্পোর্ট")
                                         }
                                     }
                                 }
@@ -386,23 +422,77 @@ fun AudioStudioPanel(
 
                             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("Offline Dialogue Voice Generator + Lip Sync", style = MaterialTheme.typography.titleSmall)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("মোশন ও ইমোশন-সিঙ্ক ভয়েস জেনারেটর", style = MaterialTheme.typography.titleSmall, color = StudioMint)
+                                        OutlinedButton(
+                                            onClick = { voiceEmotion = onSuggestVoiceEmotion(selectedCharInstanceId) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("মোশন থেকে অটো", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+
+                                    Text("কণ্ঠের ক্যারেক্টার (নারী / পুরুষ / শিশু / বৃদ্ধ)", style = MaterialTheme.typography.labelMedium)
+                                    EnumChipRow(VoiceCharacterType.entries, voiceChar, { it.label }) { voiceChar = it }
+
+                                    Text("কথা বলার ইমোশন / আবেগ", style = MaterialTheme.typography.labelMedium)
+                                    EnumChipRow(VoiceEmotion.entries, voiceEmotion, { it.label }) { voiceEmotion = it }
+
                                     OutlinedTextField(
                                         value = dialogueText,
                                         onValueChange = { dialogueText = it },
-                                        label = { Text("Dialogue Script") },
+                                        label = { Text("সংলাপ লিখুন") },
                                         modifier = Modifier.fillMaxWidth()
                                     )
-                                    LabeledSlider("Voice Pitch", pitch, 0.6f..1.6f) { pitch = it }
-                                    LabeledSlider("Speech Speed", speed, 0.6f..1.6f) { speed = it }
-                                    Button(
-                                        onClick = { onGenerateDialogue(dialogueText, pitch, speed) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = StudioMint, contentColor = StudioObsidian),
-                                        modifier = Modifier.fillMaxWidth()
+                                    LabeledSlider("ভয়েস পিচ", pitch, 0.7f..1.5f) { pitch = it }
+                                    LabeledSlider("কথার গতি", speed, 0.7f..1.5f) { speed = it }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(Icons.Default.RecordVoiceOver, contentDescription = null)
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("Create Dialogue Clip for $targetCharName")
+                                        Text("মুখের ভাব (এক্সপ্রেশন) সিঙ্ক", style = MaterialTheme.typography.bodySmall)
+                                        Switch(checked = syncExpr, onCheckedChange = { syncExpr = it })
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("ইমোশন অনুযায়ী বডি মোশন যোগ", style = MaterialTheme.typography.bodySmall)
+                                        Switch(checked = syncMotion, onCheckedChange = { syncMotion = it })
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { onPreviewVoice(dialogueText, voiceChar, voiceEmotion, pitch, speed) },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("শুনুন (প্রিভিউ)", maxLines = 1)
+                                        }
+                                        Button(
+                                            onClick = {
+                                                onGenerateDialogue(dialogueText, pitch, speed, voiceChar, voiceEmotion, syncExpr, syncMotion)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = StudioMint, contentColor = StudioObsidian),
+                                            modifier = Modifier.weight(1.3f)
+                                        ) {
+                                            Icon(Icons.Default.RecordVoiceOver, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("$targetCharName-এর ভয়েস তৈরি", maxLines = 1)
+                                        }
                                     }
                                 }
                             }
@@ -414,7 +504,7 @@ fun AudioStudioPanel(
                         val activeClip = scene.audioClips.find { it.id == selectedAudioClipId } ?: scene.audioClips.firstOrNull()
                         if (scene.audioClips.isEmpty()) {
                             Text(
-                                "No audio clips on timeline yet. Add sounds from the Library or record your voice!",
+                                "টাইমলাইনে এখনো কোনো অডিও ক্লিপ নেই। সাউন্ড লাইব্রেরি বা ভয়েস স্টুডিও থেকে যোগ করুন!",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -440,42 +530,41 @@ fun AudioStudioPanel(
                                                 Text(activeClip.title, style = MaterialTheme.typography.titleSmall, color = StudioCyan)
                                                 Row {
                                                     IconButton(onClick = { onPreviewClip(activeClip) }) {
-                                                        Icon(Icons.Default.PlayArrow, contentDescription = "Preview clip", tint = StudioMint)
+                                                        Icon(Icons.Default.PlayArrow, contentDescription = "ক্লিপ শুনুন", tint = StudioMint)
                                                     }
                                                     IconButton(onClick = { onSplitClip(activeClip.id) }) {
-                                                        Icon(Icons.Default.ContentCut, contentDescription = "Split clip at playhead")
+                                                        Icon(Icons.Default.ContentCut, contentDescription = "প্লেহেডে ভাগ করুন")
                                                     }
                                                     IconButton(onClick = { onDuplicateClip(activeClip.id) }) {
-                                                        Icon(Icons.Default.ContentCopy, contentDescription = "Duplicate clip")
+                                                        Icon(Icons.Default.ContentCopy, contentDescription = "ক্লিপ কপি করুন")
                                                     }
                                                     IconButton(onClick = { onDeleteClip(activeClip.id) }) {
-                                                        Icon(Icons.Default.Delete, contentDescription = "Delete clip", tint = StudioCoral)
+                                                        Icon(Icons.Default.Delete, contentDescription = "ক্লিপ মুছুন", tint = StudioCoral)
                                                     }
                                                 }
                                             }
-                                            // Real Audio Waveform Display
                                             WaveformVisualizer(peaks = activeClip.waveformPeaks)
-                                            LabeledSlider("Volume", activeClip.volume, 0f..1.5f, { "${(it * 100).toInt()}%" }) { v ->
+                                            LabeledSlider("ভলিউম", activeClip.volume, 0f..1.5f, { "${(it * 100).toInt()}%" }) { v ->
                                                 onUpdateClip(activeClip.id) { it.copy(volume = v) }
                                             }
-                                            LabeledSlider("Playback Speed", activeClip.playbackSpeed, 0.5f..2.0f, { "%.2fx".format(it) }) { sp ->
+                                            LabeledSlider("প্লেব্যাক গতি", activeClip.playbackSpeed, 0.5f..2.0f, { "%.2fx".format(it) }) { sp ->
                                                 onUpdateClip(activeClip.id) { it.copy(playbackSpeed = sp) }
                                             }
-                                            LabeledSlider("Timeline Position", activeClip.startTimeMs / 1000f, 0f..(scene.durationMs / 1000f), { "%.1fs".format(it) }) { sec ->
+                                            LabeledSlider("টাইমলাইনে অবস্থান", activeClip.startTimeMs / 1000f, 0f..(scene.durationMs / 1000f), { "%.1f সে.".format(it) }) { sec ->
                                                 onUpdateClip(activeClip.id) { it.copy(startTimeMs = (sec * 1000).toLong()) }
                                             }
                                             LabeledSlider(
-                                                "Trim End",
+                                                "শেষ অংশ ছাঁটা (ট্রিম)",
                                                 activeClip.trimEndMs.toFloat(),
                                                 200f..activeClip.originalDurationMs.coerceAtLeast(300L).toFloat(),
-                                                { "${it.toInt()}ms" }
+                                                { "${it.toInt()} মি.সে." }
                                             ) { te ->
                                                 onUpdateClip(activeClip.id) { it.copy(trimEndMs = te.toLong().coerceAtLeast(it.trimStartMs + 150L)) }
                                             }
-                                            LabeledSlider("Fade In (ms)", activeClip.fadeInMs.toFloat(), 0f..1200f, { "${it.toInt()}ms" }) { fi ->
+                                            LabeledSlider("ফেড ইন (মি.সে.)", activeClip.fadeInMs.toFloat(), 0f..1200f, { "${it.toInt()} মি.সে." }) { fi ->
                                                 onUpdateClip(activeClip.id) { it.copy(fadeInMs = fi.toLong()) }
                                             }
-                                            LabeledSlider("Fade Out (ms)", activeClip.fadeOutMs.toFloat(), 0f..1200f, { "${it.toInt()}ms" }) { fo ->
+                                            LabeledSlider("ফেড আউট (মি.সে.)", activeClip.fadeOutMs.toFloat(), 0f..1200f, { "${it.toInt()} মি.সে." }) { fo ->
                                                 onUpdateClip(activeClip.id) { it.copy(fadeOutMs = fo.toLong()) }
                                             }
                                             Row(
@@ -483,7 +572,7 @@ fun AudioStudioPanel(
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Text("Loop Audio Clip", style = MaterialTheme.typography.bodyMedium)
+                                                Text("অডিও ক্লিপ বারবার চালান (লুপ)", style = MaterialTheme.typography.bodyMedium)
                                                 Switch(
                                                     checked = activeClip.loop,
                                                     onCheckedChange = { l -> onUpdateClip(activeClip.id) { it.copy(loop = l) } }

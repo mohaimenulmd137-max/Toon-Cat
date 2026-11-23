@@ -2,6 +2,9 @@ package com.example.ui.screens
 
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -46,6 +49,8 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
@@ -55,6 +60,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
@@ -96,9 +102,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,9 +125,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import com.example.domain.model.AnimationProject
 import com.example.domain.model.AudioClip
 import com.example.domain.model.AudioTrackType
@@ -129,6 +140,7 @@ import com.example.domain.model.CameraMotionType
 import com.example.domain.model.CameraNode
 import com.example.domain.model.CartoonCharacter
 import com.example.domain.model.CharacterPose
+import com.example.domain.model.CharacterViewAngle
 import com.example.domain.model.EasingType
 import com.example.domain.model.ExportAspectRatio
 import com.example.domain.model.ExportResolution
@@ -147,11 +159,15 @@ import com.example.domain.model.SoundAsset
 import com.example.domain.model.StudioScene
 import com.example.domain.model.StudioSettings
 import com.example.domain.model.TimelineTrackKind
+import com.example.domain.model.VoiceCharacterType
+import com.example.domain.model.VoiceEmotion
 import com.example.domain.model.WeatherType
 import com.example.engine.AnimationEvaluator
 import com.example.engine.StageRenderer
 import com.example.ui.StageToolMode
 import com.example.ui.StudioDestination
+import com.example.ui.TimelineClipCategory
+import com.example.ui.TimelineClipSelection
 import com.example.ui.components.formatTimecode
 import com.example.ui.theme.NleAmber
 import com.example.ui.theme.NleAmberFill
@@ -184,15 +200,15 @@ import com.example.ui.theme.TrackVoiceColor
 
 private enum class NleSheet(val title: String) {
     NONE(""),
-    CAST_AND_SCENE("Cast & Scenes"),
-    MOTIONS("Body Motions & Automation"),
-    RIG_POSE("24-Joint Rig & Pose (IK/FK)"),
-    FACE_DIALOGUE("Face Expressions & Lip Sync"),
-    INTERACT_PROPS("Cast Interactions & Props"),
-    SCENE_ENV("Backgrounds, Weather & Mood"),
-    CAMERA("Multi-Camera & Angles"),
-    AUDIO("Sound Library, Voice & Mixer"),
-    KEYFRAMES("Timeline Keyframes")
+    CAST_AND_SCENE("ক্যারেক্টার ও দৃশ্য"),
+    MOTIONS("বডি মোশন ও অটোমেশন"),
+    RIG_POSE("২৪-জয়েন্ট রিগ ও পোজ (IK/FK)"),
+    FACE_DIALOGUE("মুখের ভাব ও ভয়েস স্টুডিও"),
+    INTERACT_PROPS("মিথস্ক্রিয়া ও প্রপস"),
+    SCENE_ENV("ব্যাকগ্রাউন্ড, আবহাওয়া ও আলো"),
+    CAMERA("মাল্টি-ক্যামেরা ও অ্যাঙ্গেল"),
+    AUDIO("সাউন্ড লাইব্রেরি, ভয়েস ও মিক্সার"),
+    KEYFRAMES("টাইমলাইন কিফ্রেম")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -213,10 +229,12 @@ fun StudioNleWorkspace(
     selectedJoint: RigJoint,
     selectedCameraId: String?,
     selectedAudioClipId: String?,
+    selectedTimelineClip: TimelineClipSelection?,
     timelineZoom: Float,
     panelCollapsed: Boolean,
     isRecordingVoice: Boolean,
     customBgBitmap: Bitmap?,
+    customCharacterBitmaps: Map<String, Bitmap> = emptyMap(),
     canUndo: Boolean,
     canRedo: Boolean,
     onNavigate: (StudioDestination) -> Unit,
@@ -241,8 +259,12 @@ fun StudioNleWorkspace(
     onDuplicateSelection: () -> Unit,
     onSelectCharacterInstance: (String) -> Unit,
     onAddCharacterToScene: (CartoonCharacter) -> Unit,
+    onImportCustomCharacterUri: (Uri) -> Unit,
     onRemoveCharacterFromScene: (String) -> Unit,
-    onUpdateCharacterTransform: (Float?, Float?, Boolean?, Int?, Boolean?) -> Unit,
+    onUpdateCharacterTransform: (Float?, Float?, Boolean?, Int?, Boolean?, CharacterViewAngle?) -> Unit,
+    onApplyQuickHumanPosture: (MotionPreset) -> Unit,
+    onScaleSelectedCharacter: (Float) -> Unit,
+    onSetCharacterViewAngle: (CharacterViewAngle) -> Unit,
     onAddMotionClip: (MotionPreset, Long, Float, Float, Int, Int, Boolean) -> Unit,
     onRigControlModeChange: (RigControlMode) -> Unit,
     onSelectJoint: (RigJoint) -> Unit,
@@ -251,7 +273,9 @@ fun StudioNleWorkspace(
     onApplySavedPose: (CharacterPose) -> Unit,
     onSaveCustomPose: (String) -> Unit,
     onSetFaceState: (FacialExpression, EyeDirection, Boolean) -> Unit,
-    onSayDialogue: (String, Float, Float) -> Unit,
+    onSuggestVoiceEmotion: (String?) -> VoiceEmotion,
+    onPreviewVoice: (String, VoiceCharacterType, VoiceEmotion, Float, Float) -> Unit,
+    onSayDialogue: (String, Float, Float, VoiceCharacterType, VoiceEmotion, Boolean, Boolean) -> Unit,
     onApplyInteraction: (String, InteractionPreset) -> Unit,
     onAddProp: (PropType) -> Unit,
     onSelectProp: (String) -> Unit,
@@ -286,13 +310,48 @@ fun StudioNleWorkspace(
     onDeleteMotionClip: (String) -> Unit,
     onTrimMotionClipEnd: (String, Long) -> Unit,
     onDeleteCameraCut: (String) -> Unit,
+    onSelectTimelineClip: (TimelineClipSelection?) -> Unit,
+    onMoveTimelineClip: (TimelineClipCategory, String, Long, Int) -> Unit,
+    onResizeTimelineClip: (TimelineClipCategory, String, Long, Long) -> Unit,
+    onMoveTimelineClipVertically: (TimelineClipCategory, String, Int) -> Unit,
+    onMoveLayerOrder: (TimelineTrackKind, Int) -> Unit,
+    onSplitTimelineClip: (TimelineClipCategory, String) -> Unit,
+    onDuplicateTimelineClip: (TimelineClipCategory, String) -> Unit,
+    onDeleteTimelineClip: (TimelineClipCategory, String) -> Unit,
+    onFocusCameraOnCharacter: (String) -> Unit,
+    onResetCameraWide: () -> Unit,
+    onGetUndoDepth: () -> Int,
+    onCommitStagedEdit: (StudioScene, Int) -> Unit,
+    onCancelStagedEdit: (StudioScene, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var activeSheet by remember { mutableStateOf(NleSheet.NONE) }
+    var stagedSnapshot by remember { mutableStateOf<StudioScene?>(null) }
+    var stagedUndoDepth by remember { mutableStateOf(0) }
     var showResolutionMenu by remember { mutableStateOf(false) }
     var showGuides by remember { mutableStateOf(true) }
     val hiddenTracks = remember { mutableStateMapOf<TimelineTrackKind, Boolean>() }
     val lockedTracks = remember { mutableStateMapOf<TimelineTrackKind, Boolean>() }
+
+    fun openEditSheet(target: NleSheet) {
+        if (activeSheet == NleSheet.NONE) {
+            stagedSnapshot = scene
+            stagedUndoDepth = onGetUndoDepth()
+        }
+        activeSheet = target
+    }
+
+    fun confirmEditSheet() {
+        stagedSnapshot?.let { onCommitStagedEdit(it, stagedUndoDepth) }
+        stagedSnapshot = null
+        activeSheet = NleSheet.NONE
+    }
+
+    fun cancelEditSheet() {
+        stagedSnapshot?.let { onCancelStagedEdit(it, stagedUndoDepth) }
+        stagedSnapshot = null
+        activeSheet = NleSheet.NONE
+    }
 
     val charMap = remember(characterLibrary) { characterLibrary.associateBy { it.id } }
     val evaluated = remember(scene, playheadMs) { AnimationEvaluator.evaluateScene(scene, playheadMs) }
@@ -319,7 +378,7 @@ fun StudioNleWorkspace(
                     onClick = { onNavigate(StudioDestination.HOME) },
                     modifier = Modifier.size(38.dp).testTag("nle_back_btn")
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to Home", tint = Color.White, modifier = Modifier.size(20.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "হোমে ফিরুন", tint = Color.White, modifier = Modifier.size(20.dp))
                 }
                 Text(
                     text = project.name,
@@ -339,7 +398,7 @@ fun StudioNleWorkspace(
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "Undo",
+                        contentDescription = "আগের ধাপ",
                         tint = if (canUndo) Color.White else Color.Gray,
                         modifier = Modifier.size(19.dp)
                     )
@@ -351,7 +410,7 @@ fun StudioNleWorkspace(
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.Redo,
-                        contentDescription = "Redo",
+                        contentDescription = "পরের ধাপ",
                         tint = if (canRedo) Color.White else Color.Gray,
                         modifier = Modifier.size(19.dp)
                     )
@@ -372,7 +431,7 @@ fun StudioNleWorkspace(
                         .clickable { onCycleSpeed() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Speed, contentDescription = "Speed ${playbackSpeed}x", tint = NleGold, modifier = Modifier.size(17.dp))
+                    Icon(Icons.Default.Speed, contentDescription = "গতি ${playbackSpeed}x", tint = NleGold, modifier = Modifier.size(17.dp))
                 }
 
                 // Resolution Dropdown Pill (1080p v)
@@ -393,7 +452,7 @@ fun StudioNleWorkspace(
                             ExportResolution.P1080 -> "1080p"
                         }
                         Text(resShort, style = MaterialTheme.typography.labelMedium, color = Color.White)
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Resolution", tint = Color.LightGray, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "রেজোলিউশন", tint = Color.LightGray, modifier = Modifier.size(16.dp))
                     }
                     DropdownMenu(
                         expanded = showResolutionMenu,
@@ -421,7 +480,7 @@ fun StudioNleWorkspace(
                         .clickable { onNavigate(StudioDestination.SETTINGS) },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Tune, contentDescription = "Studio Settings", tint = Color.White, modifier = Modifier.size(17.dp))
+                    Icon(Icons.Default.Tune, contentDescription = "স্টুডিও সেটিংস", tint = Color.White, modifier = Modifier.size(17.dp))
                 }
 
                 // Bright Gold Export Pill
@@ -437,12 +496,12 @@ fun StudioNleWorkspace(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Icon(Icons.Default.Download, contentDescription = null, tint = NleBackground, modifier = Modifier.size(16.dp))
-                    Text("Export", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = NleBackground)
+                    Text("এক্সপোর্ট", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = NleBackground)
                 }
             }
         }
 
-        // 2. FOUR COLORED CREATION PILLS ROW (Cast/Scene, Audio, T+Dialogue, Camera/FX)
+        // 2. FOUR COLORED CREATION PILLS ROW (Cast/Scene, Audio, Voice, Camera)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -450,40 +509,40 @@ fun StudioNleWorkspace(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             NleTintedPill(
-                label = "Cast/Media",
+                label = "মিডিয়া/চরিত্র",
                 icon = Icons.Default.PermMedia,
                 hasDropdown = true,
                 fill = NleGreenFill,
                 accent = NleGreen,
-                onClick = { activeSheet = NleSheet.CAST_AND_SCENE },
+                onClick = { openEditSheet(NleSheet.CAST_AND_SCENE) },
                 modifier = Modifier.weight(1f).testTag("pill_cast_scene")
             )
             NleTintedPill(
-                label = "Audio",
+                label = "অডিও",
                 icon = Icons.Default.MusicNote,
                 hasDropdown = true,
                 fill = NleAmberFill,
                 accent = NleAmber,
-                onClick = { activeSheet = NleSheet.AUDIO },
-                modifier = Modifier.weight(0.88f).testTag("pill_audio")
+                onClick = { openEditSheet(NleSheet.AUDIO) },
+                modifier = Modifier.weight(0.84f).testTag("pill_audio")
             )
             NleTintedPill(
-                label = "T + Talk",
+                label = "ভয়েস+কথা",
                 icon = Icons.Default.TextFields,
                 hasDropdown = false,
                 fill = NleBlueFill,
                 accent = NleBlue,
-                onClick = { activeSheet = NleSheet.FACE_DIALOGUE },
+                onClick = { openEditSheet(NleSheet.FACE_DIALOGUE) },
                 modifier = Modifier.weight(0.95f).testTag("pill_dialogue")
             )
             NleTintedPill(
-                label = "Camera",
+                label = "ক্যামেরা",
                 icon = Icons.Default.ClosedCaption,
                 hasDropdown = false,
                 fill = NleTealFill,
                 accent = NleTeal,
-                onClick = { activeSheet = NleSheet.CAMERA },
-                modifier = Modifier.weight(0.92f).testTag("pill_camera")
+                onClick = { openEditSheet(NleSheet.CAMERA) },
+                modifier = Modifier.weight(0.90f).testTag("pill_camera")
             )
         }
 
@@ -497,7 +556,7 @@ fun StudioNleWorkspace(
         ) {
             val isRigOn = toolMode == StageToolMode.RIG_POSE
             NleStatusChip(
-                label = if (isRigOn) "Rig: On" else "Stage: On",
+                label = if (isRigOn) "রিগ: অন" else "ভিডিও: অন",
                 icon = Icons.Default.Visibility,
                 fill = NleGreenFill,
                 accent = NleGreen,
@@ -507,9 +566,9 @@ fun StudioNleWorkspace(
                 modifier = Modifier.weight(0.95f)
             )
             val modeShort = when (toolMode) {
-                StageToolMode.SELECT_MOVE -> "Edit: Move"
-                StageToolMode.RIG_POSE -> "Edit: Pose"
-                StageToolMode.CAMERA_NAV -> "Edit: Cam"
+                StageToolMode.SELECT_MOVE -> "এডিট: মুভ"
+                StageToolMode.RIG_POSE -> "এডিট: পোজ"
+                StageToolMode.CAMERA_NAV -> "এডিট: ক্যামেরা"
             }
             NleStatusChip(
                 label = modeShort,
@@ -527,17 +586,16 @@ fun StudioNleWorkspace(
                 modifier = Modifier.weight(0.98f)
             )
             NleStatusChip(
-                label = "At ${"%.1f".format(playheadMs / 1000f)}s",
+                label = "${"%.1f".format(playheadMs / 1000f)}সে.",
                 icon = Icons.Default.PlayArrow,
                 fill = NleBlueFill,
                 accent = NleBlue,
                 onClick = { onToggleLoop() },
-                modifier = Modifier.weight(0.98f)
+                modifier = Modifier.weight(0.92f)
             )
-            // Compact Inline Master Volume Pill
             Row(
                 modifier = Modifier
-                    .weight(1.05f)
+                    .weight(1.08f)
                     .height(28.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(NleSurface)
@@ -545,7 +603,7 @@ fun StudioNleWorkspace(
                     .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Master volume", tint = StudioCyan, modifier = Modifier.size(15.dp))
+                Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "মাস্টার ভলিউম", tint = StudioCyan, modifier = Modifier.size(15.dp))
                 Slider(
                     value = settings.masterVolume,
                     onValueChange = onUpdateMasterVolume,
@@ -586,7 +644,7 @@ fun StudioNleWorkspace(
                         }
                     }
                     .pointerInput(toolMode) {
-                        if (toolMode == StageToolMode.CAMERA_NAV) {
+                        if (toolMode == StageToolMode.CAMERA_NAV || toolMode == StageToolMode.SELECT_MOVE) {
                             detectTransformGestures { _, pan, zoom, rotation ->
                                 val w = stageSize.width.toFloat().coerceAtLeast(1f)
                                 val h = stageSize.height.toFloat().coerceAtLeast(1f)
@@ -623,7 +681,8 @@ fun StudioNleWorkspace(
                                 selectedJoint = selectedJoint,
                                 selectedPropId = selectedPropId,
                                 showCameraGuides = showGuides && toolMode == StageToolMode.CAMERA_NAV,
-                                customBackgroundBitmap = customBgBitmap
+                                customBackgroundBitmap = customBgBitmap,
+                                customCharacterBitmaps = customCharacterBitmaps
                             )
                         )
                     }
@@ -668,7 +727,7 @@ fun StudioNleWorkspace(
                         .clickable { onToggleCollapse() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.OpenInFull, contentDescription = "Toggle stage expand", tint = if (panelCollapsed) NleGold else Color.White, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.OpenInFull, contentDescription = "পূর্ণ স্ক্রিন", tint = if (panelCollapsed) NleGold else Color.White, modifier = Modifier.size(16.dp))
                 }
                 Box(
                     modifier = Modifier
@@ -679,7 +738,7 @@ fun StudioNleWorkspace(
                         .clickable { showGuides = !showGuides },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.GridOn, contentDescription = "Toggle viewfinder guides", tint = if (showGuides) StudioCyan else Color.LightGray, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.GridOn, contentDescription = "গ্রিড গাইড", tint = if (showGuides) StudioCyan else Color.LightGray, modifier = Modifier.size(16.dp))
                 }
             }
 
@@ -689,7 +748,7 @@ fun StudioNleWorkspace(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 IconButton(onClick = { onStepFrame(-1) }, modifier = Modifier.size(34.dp)) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous frame", tint = Color.White, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Default.SkipPrevious, contentDescription = "আগের ফ্রেম", tint = Color.White, modifier = Modifier.size(22.dp))
                 }
                 Box(
                     modifier = Modifier
@@ -702,13 +761,13 @@ fun StudioNleWorkspace(
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        contentDescription = if (isPlaying) "বিরতি" else "চালান",
                         tint = NleBackground,
                         modifier = Modifier.size(24.dp)
                     )
                 }
                 IconButton(onClick = { onStepFrame(1) }, modifier = Modifier.size(34.dp)) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next frame", tint = Color.White, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Default.SkipNext, contentDescription = "পরের ফ্রেম", tint = Color.White, modifier = Modifier.size(22.dp))
                 }
             }
 
@@ -751,6 +810,189 @@ fun StudioNleWorkspace(
             }
         }
 
+        // 5B. CAST, SIZE, ANGLE, POSTURE & CAMERA FOCUS STRIP
+        val activeChar = scene.characters.find { it.id == selectedCharInstanceId } ?: scene.characters.firstOrNull()
+        val quickImportPicker = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.PickVisualMedia()
+        ) { uri ->
+            uri?.let { onImportCustomCharacterUri(it) }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .height(26.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(NleGreenFill)
+                    .border(1.dp, NleGreen.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+                    .clickable {
+                        quickImportPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+                    .padding(horizontal = 8.dp)
+                    .testTag("nle_import_char_btn"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(Icons.Default.Image, contentDescription = "চরিত্র ইম্পোর্ট", tint = NleGreen, modifier = Modifier.size(12.dp))
+                Text("+ ইম্পোর্ট", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = NleGreen, maxLines = 1)
+            }
+            scene.characters.forEach { ch ->
+                val isSel = ch.id == activeChar?.id
+                Row(
+                    modifier = Modifier
+                        .height(26.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSel) NleAmberFill else NleSurface)
+                        .border(
+                            1.dp,
+                            if (isSel) NleGold else NleBorder,
+                            RoundedCornerShape(8.dp)
+                        )
+                        .clickable { onSelectCharacterInstance(ch.id) }
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        tint = if (isSel) NleGold else Color(0xFF94A3B8),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = ch.name,
+                        fontSize = 10.sp,
+                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSel) NleGold else Color(0xFFCBD5E1),
+                        maxLines = 1
+                    )
+                }
+            }
+            if (activeChar != null) {
+                Row(
+                    modifier = Modifier
+                        .height(26.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(NleSurface)
+                        .border(1.dp, NleBorder, RoundedCornerShape(8.dp))
+                        .clickable { onScaleSelectedCharacter(0.85f) }
+                        .padding(horizontal = 7.dp)
+                        .testTag("nle_size_down_btn"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.ZoomOut, contentDescription = "ছোট করুন", tint = Color(0xFFCBD5E1), modifier = Modifier.size(12.dp))
+                }
+                Row(
+                    modifier = Modifier
+                        .height(26.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(NleSurface)
+                        .border(1.dp, NleBorder, RoundedCornerShape(8.dp))
+                        .clickable { onScaleSelectedCharacter(1.18f) }
+                        .padding(horizontal = 7.dp)
+                        .testTag("nle_size_up_btn"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Icon(Icons.Default.ZoomIn, contentDescription = "বড় করুন", tint = Color(0xFFCBD5E1), modifier = Modifier.size(12.dp))
+                    Text("${"%.1f".format(activeChar.scale)}x", fontSize = 10.sp, color = Color(0xFFCBD5E1), maxLines = 1)
+                }
+                val nextAngle = CharacterViewAngle.entries[
+                    (CharacterViewAngle.entries.indexOf(activeChar.viewAngle) + 1) % CharacterViewAngle.entries.size
+                ]
+                Row(
+                    modifier = Modifier
+                        .height(26.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(NleBlueFill)
+                        .border(1.dp, NleBlue.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+                        .clickable { onSetCharacterViewAngle(nextAngle) }
+                        .padding(horizontal = 8.dp)
+                        .testTag("nle_angle_cycle_btn"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "দিক: ${activeChar.viewAngle.label}",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NleBlue,
+                        maxLines = 1
+                    )
+                }
+                listOf(
+                    MotionPreset.STAND to "দাঁড়ানো",
+                    MotionPreset.SIT to "বসা",
+                    MotionPreset.SIT_FLOOR to "মেঝে",
+                    MotionPreset.LIE_DOWN to "শোয়া"
+                ).forEach { (posture, shortLabel) ->
+                    Row(
+                        modifier = Modifier
+                            .height(26.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(NleSurface)
+                            .border(1.dp, NleBorder, RoundedCornerShape(8.dp))
+                            .clickable { onApplyQuickHumanPosture(posture) }
+                            .padding(horizontal = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(shortLabel, fontSize = 10.sp, color = Color(0xFFCBD5E1), maxLines = 1)
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .height(26.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(NleTealFill)
+                        .border(1.dp, StudioCyan.copy(alpha = 0.75f), RoundedCornerShape(8.dp))
+                        .clickable { onFocusCameraOnCharacter(activeChar.id) }
+                        .padding(horizontal = 8.dp)
+                        .testTag("focus_cam_char_btn"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Videocam,
+                        contentDescription = "${activeChar.name}-এর দিকে ক্যামেরা",
+                        tint = StudioCyan,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Text(
+                        text = "ক্যামেরা → ${activeChar.name}",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = StudioCyan,
+                        maxLines = 1
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .height(26.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(NleSurface)
+                        .border(1.dp, NleBorder, RoundedCornerShape(8.dp))
+                        .clickable { onResetCameraWide() }
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "পুরো দৃশ্য",
+                        fontSize = 10.sp,
+                        color = Color(0xFFCBD5E1),
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+
         // 6. LAYERS + MULTITRACK TIMELINE AREA (Collapsible when expanded)
         AnimatedVisibility(visible = !panelCollapsed, modifier = Modifier.weight(0.95f)) {
             val hScroll = rememberScrollState()
@@ -772,14 +1014,13 @@ fun StudioNleWorkspace(
                         .padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left Layers Header (Layers (N) + Zoom Out / Fit / Zoom In)
                     Row(
                         modifier = Modifier.width(layerColWidth),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
-                            text = "Layers (${TimelineTrackKind.entries.size})",
+                            text = "লেয়ার (${TimelineTrackKind.entries.size})",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                             fontSize = 10.sp,
                             color = Color.White,
@@ -796,7 +1037,7 @@ fun StudioNleWorkspace(
                                 .clickable { onZoomChange(timelineZoom - 0.25f) },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.ZoomOut, contentDescription = "Zoom out", tint = Color.LightGray, modifier = Modifier.size(13.dp))
+                            Icon(Icons.Default.ZoomOut, contentDescription = "জুম আউট", tint = Color.LightGray, modifier = Modifier.size(13.dp))
                         }
                         Box(
                             modifier = Modifier
@@ -808,7 +1049,7 @@ fun StudioNleWorkspace(
                                 .padding(horizontal = 5.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("Fit", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp, color = NleGold)
+                            Text("ফিট", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp, color = NleGold)
                         }
                         Box(
                             modifier = Modifier
@@ -882,23 +1123,100 @@ fun StudioNleWorkspace(
                     }
                 }
 
+                // Selected Clip Quick Edit Bar (Move Up/Down, Trim Time, Split, Copy, Delete)
+                val selectedClipInfo = remember(scene, selectedTimelineClip) {
+                    resolveSelectedClipInfo(scene, selectedTimelineClip)
+                }
+                if (selectedTimelineClip != null && selectedClipInfo != null) {
+                    val clipAccent = nleCategoryColor(selectedTimelineClip.category)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(NleSurfaceElevated)
+                            .border(1.dp, clipAccent.copy(alpha = 0.65f), RoundedCornerShape(8.dp))
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(clipAccent)
+                        )
+                        Text(
+                            text = selectedClipInfo.label,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "${"%.1f".format(selectedClipInfo.startMs / 1000f)}সে.-${"%.1f".format(selectedClipInfo.endMs / 1000f)}সে.",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            color = NleGold
+                        )
+                        NleQuickChip("উপরে", Icons.Default.ArrowUpward, Color.White) {
+                            onMoveTimelineClipVertically(selectedTimelineClip.category, selectedTimelineClip.id, -1)
+                        }
+                        NleQuickChip("নিচে", Icons.Default.ArrowDownward, Color.White) {
+                            onMoveTimelineClipVertically(selectedTimelineClip.category, selectedTimelineClip.id, 1)
+                        }
+                        NleQuickChip("ভাগ", Icons.Default.ContentCut, StudioCyan) {
+                            onSplitTimelineClip(selectedTimelineClip.category, selectedTimelineClip.id)
+                        }
+                        NleQuickChip("কপি", Icons.Default.ContentCopy, NleGreen) {
+                            onDuplicateTimelineClip(selectedTimelineClip.category, selectedTimelineClip.id)
+                        }
+                        NleQuickChip("মুছুন", Icons.Default.Delete, StudioCoral) {
+                            onDeleteTimelineClip(selectedTimelineClip.category, selectedTimelineClip.id)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF1E293B))
+                                .clickable { onSelectTimelineClip(null) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "নির্বাচন বাতিল", tint = Color.LightGray, modifier = Modifier.size(13.dp))
+                        }
+                    }
+                }
+
                 // Unified Synchronized Layers + Lanes List
+                val orderedTracks = remember(scene.trackOrder) {
+                    val base = scene.trackOrder.ifEmpty { TimelineTrackKind.entries }
+                    val missing = TimelineTrackKind.entries.filter { it !in base }
+                    base + missing
+                }
+                val laneRowDp = 32.dp
+                val laneRowPx = with(density) { laneRowDp.toPx() }
+
                 Box(modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp)) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
-                        items(TimelineTrackKind.entries, key = { it.name }) { kind ->
+                        items(orderedTracks, key = { it.name }) { kind ->
                             val isHidden = hiddenTracks[kind] == true
                             val isLocked = lockedTracks[kind] == true
+                            val trackIdx = orderedTracks.indexOf(kind)
+                            val rawClips = remember(kind, scene) { extractTrackClips(kind, scene) }
+                            val (packedClips, laneCount) = remember(rawClips) { assignClipSubLanes(rawClips) }
+                            val rowHeight = (laneRowDp * laneCount.coerceAtLeast(1)) + 6.dp
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(38.dp),
+                                    .height(rowHeight),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Left Layer Card (Icon, Name, Up, Down, Eye, Lock, +)
+                                // Left Layer Card (Icon, Name, Move Layer Up/Down, Eye, Lock, +)
                                 Row(
                                     modifier = Modifier
                                         .width(layerColWidth)
@@ -913,7 +1231,7 @@ fun StudioNleWorkspace(
                                         modifier = Modifier
                                             .weight(1f)
                                             .clickable {
-                                                if (!isLocked) activeSheet = sheetForTrack(kind)
+                                                if (!isLocked) openEditSheet(sheetForTrack(kind))
                                             },
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -924,56 +1242,46 @@ fun StudioNleWorkspace(
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            text = kind.label,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontSize = 11.sp,
-                                            color = if (isHidden) Color.Gray else Color.White,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Column {
+                                            Text(
+                                                text = kind.label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 11.sp,
+                                                color = if (isHidden) Color.Gray else Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (rawClips.isNotEmpty()) {
+                                                Text(
+                                                    text = "${rawClips.size} ক্লিপ",
+                                                    fontSize = 8.sp,
+                                                    color = nleTrackColor(kind).copy(alpha = 0.85f),
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
                                     }
                                     Icon(
                                         Icons.Default.ArrowUpward,
-                                        contentDescription = "Step up",
-                                        tint = Color(0xFF94A3B8),
-                                        modifier = Modifier.size(13.dp).clickable {
-                                            when (kind) {
-                                                TimelineTrackKind.CHARACTER -> {
-                                                    val sel = scene.characters.find { it.id == selectedCharInstanceId }
-                                                    if (sel != null) onUpdateCharacterTransform(null, null, null, sel.zOrder + 1, null)
-                                                }
-                                                TimelineTrackKind.OBJECT -> {
-                                                    val prop = scene.props.find { it.id == selectedPropId }
-                                                    if (prop != null) onUpdateProp(null, null, prop.zOrder + 1, null, null, false)
-                                                }
-                                                else -> Unit
-                                            }
+                                        contentDescription = "লেয়ার উপরে নিন",
+                                        tint = if (trackIdx > 0) Color(0xFF94A3B8) else Color(0xFF334155),
+                                        modifier = Modifier.size(14.dp).clickable(enabled = trackIdx > 0) {
+                                            onMoveLayerOrder(kind, -1)
                                         }
                                     )
                                     Spacer(Modifier.width(2.dp))
                                     Icon(
                                         Icons.Default.ArrowDownward,
-                                        contentDescription = "Step down",
-                                        tint = Color(0xFF94A3B8),
-                                        modifier = Modifier.size(13.dp).clickable {
-                                            when (kind) {
-                                                TimelineTrackKind.CHARACTER -> {
-                                                    val sel = scene.characters.find { it.id == selectedCharInstanceId }
-                                                    if (sel != null) onUpdateCharacterTransform(null, null, null, (sel.zOrder - 1).coerceAtLeast(1), null)
-                                                }
-                                                TimelineTrackKind.OBJECT -> {
-                                                    val prop = scene.props.find { it.id == selectedPropId }
-                                                    if (prop != null) onUpdateProp(null, null, (prop.zOrder - 1).coerceAtLeast(1), null, null, false)
-                                                }
-                                                else -> Unit
-                                            }
+                                        contentDescription = "লেয়ার নিচে নিন",
+                                        tint = if (trackIdx < orderedTracks.lastIndex) Color(0xFF94A3B8) else Color(0xFF334155),
+                                        modifier = Modifier.size(14.dp).clickable(enabled = trackIdx < orderedTracks.lastIndex) {
+                                            onMoveLayerOrder(kind, 1)
                                         }
                                     )
                                     Spacer(Modifier.width(3.dp))
                                     Icon(
                                         imageVector = if (isHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = "Toggle layer visibility",
+                                        contentDescription = "দেখা/লুকানো",
                                         tint = if (isHidden) StudioCoral else Color(0xFFCBD5E1),
                                         modifier = Modifier.size(13.dp).clickable {
                                             hiddenTracks[kind] = !isHidden
@@ -982,7 +1290,7 @@ fun StudioNleWorkspace(
                                     Spacer(Modifier.width(3.dp))
                                     Icon(
                                         imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                                        contentDescription = "Toggle layer lock",
+                                        contentDescription = "লক/আনলক",
                                         tint = if (isLocked) NleGold else Color(0xFF94A3B8),
                                         modifier = Modifier.size(13.dp).clickable {
                                             lockedTracks[kind] = !isLocked
@@ -991,11 +1299,11 @@ fun StudioNleWorkspace(
                                     Spacer(Modifier.width(3.dp))
                                     Icon(
                                         imageVector = Icons.Default.Add,
-                                        contentDescription = "Add to ${kind.label}",
+                                        contentDescription = "${kind.label}-এ যোগ করুন",
                                         tint = Color.White,
                                         modifier = Modifier.size(15.dp).clickable {
                                             if (!isLocked) {
-                                                activeSheet = sheetForTrack(kind)
+                                                openEditSheet(sheetForTrack(kind))
                                             }
                                         }
                                     )
@@ -1003,7 +1311,6 @@ fun StudioNleWorkspace(
 
                                 Spacer(Modifier.width(4.dp))
 
-                                // Right Track Lane (Synchronized horizontal scroll)
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
@@ -1013,15 +1320,21 @@ fun StudioNleWorkspace(
                                     NleTimelineLane(
                                         kind = kind,
                                         scene = scene,
+                                        packedClips = packedClips,
+                                        laneCount = laneCount,
+                                        laneRowDp = laneRowDp,
+                                        laneRowPx = laneRowPx,
                                         trackWidth = trackWidth,
+                                        trackWidthPx = trackWidthPx,
                                         isHidden = isHidden,
                                         isLocked = isLocked,
+                                        selectedTimelineClip = selectedTimelineClip,
                                         onSeek = onSeek,
+                                        onSelectTimelineClip = onSelectTimelineClip,
+                                        onMoveTimelineClip = onMoveTimelineClip,
+                                        onResizeTimelineClip = onResizeTimelineClip,
                                         onDeleteKeyframe = onDeleteKeyframe,
-                                        onDeleteMotionClip = onDeleteMotionClip,
-                                        onTrimMotionClipEnd = onTrimMotionClipEnd,
-                                        onDeleteCameraCut = onDeleteCameraCut,
-                                        onSelectAudioClip = onSelectAudioClip
+                                        onOpenSheet = { openEditSheet(sheetForTrack(kind)) }
                                     )
                                 }
                             }
@@ -1067,36 +1380,36 @@ fun StudioNleWorkspace(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                NleDockButton("Cut", Icons.Default.ContentCut, Color(0xFF94A3B8), onClick = onSplitAtPlayhead, modifier = Modifier.weight(1f))
-                NleDockButton("Delete", Icons.Default.Delete, Color(0xFF94A3B8), onClick = onDeleteAtPlayhead, modifier = Modifier.weight(1f))
-                NleDockButton("Speed", Icons.Default.Speed, StudioCyan, onClick = onCycleSpeed, modifier = Modifier.weight(1f))
-                NleDockButton("Look", Icons.Default.Palette, NleGold, onClick = { activeSheet = NleSheet.SCENE_ENV }, modifier = Modifier.weight(1f))
-                NleDockButton("Animate", Icons.Default.AutoFixHigh, Color(0xFFF472B6), onClick = { activeSheet = NleSheet.MOTIONS }, modifier = Modifier.weight(1f).testTag("dock_animate_btn"))
-                NleDockButton("Scene", Icons.Default.Wallpaper, NleGreen, onClick = { activeSheet = NleSheet.SCENE_ENV }, modifier = Modifier.weight(1f).testTag("dock_scene_btn"))
+                NleDockButton("কাটুন", Icons.Default.ContentCut, Color(0xFF94A3B8), onClick = onSplitAtPlayhead, modifier = Modifier.weight(1f))
+                NleDockButton("মুছুন", Icons.Default.Delete, Color(0xFF94A3B8), onClick = onDeleteAtPlayhead, modifier = Modifier.weight(1f))
+                NleDockButton("গতি", Icons.Default.Speed, StudioCyan, onClick = onCycleSpeed, modifier = Modifier.weight(1f))
+                NleDockButton("কালার", Icons.Default.Palette, NleGold, onClick = { openEditSheet(NleSheet.SCENE_ENV) }, modifier = Modifier.weight(1f))
+                NleDockButton("অ্যানিমেশন", Icons.Default.AutoFixHigh, Color(0xFFF472B6), onClick = { openEditSheet(NleSheet.MOTIONS) }, modifier = Modifier.weight(1f).testTag("dock_animate_btn"))
+                NleDockButton("দৃশ্য", Icons.Default.Wallpaper, NleGreen, onClick = { openEditSheet(NleSheet.SCENE_ENV) }, modifier = Modifier.weight(1f).testTag("dock_scene_btn"))
             }
             // Row 2 (6 Tools)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                NleDockButton("Copy", Icons.Default.ContentCopy, Color(0xFF94A3B8), onClick = onDuplicateSelection, modifier = Modifier.weight(1f))
-                NleDockButton("Rig/Pose", Icons.Default.AccessibilityNew, NleAmber, onClick = {
+                NleDockButton("কপি", Icons.Default.ContentCopy, Color(0xFF94A3B8), onClick = onDuplicateSelection, modifier = Modifier.weight(1f))
+                NleDockButton("রিগ/পোজ", Icons.Default.AccessibilityNew, NleAmber, onClick = {
                     onToolModeChange(StageToolMode.RIG_POSE)
-                    activeSheet = NleSheet.RIG_POSE
+                    openEditSheet(NleSheet.RIG_POSE)
                 }, modifier = Modifier.weight(1f).testTag("dock_rig_btn"))
-                NleDockButton("Volume", Icons.AutoMirrored.Filled.VolumeUp, NleGreen, onClick = { activeSheet = NleSheet.AUDIO }, modifier = Modifier.weight(1f).testTag("dock_audio_btn"))
-                NleDockButton("Talk", Icons.Default.TextFields, Color(0xFFA78BFA), onClick = { activeSheet = NleSheet.FACE_DIALOGUE }, modifier = Modifier.weight(1f).testTag("dock_talk_btn"))
-                NleDockButton("Camera", Icons.Default.AutoAwesome, StudioCyan, onClick = { activeSheet = NleSheet.CAMERA }, modifier = Modifier.weight(1f).testTag("dock_camera_btn"))
-                NleDockButton("Keys/Prop", Icons.Default.Diamond, Color(0xFFE2E8F0), onClick = { activeSheet = NleSheet.KEYFRAMES }, modifier = Modifier.weight(1f).testTag("dock_keys_btn"))
+                NleDockButton("ভলিউম", Icons.AutoMirrored.Filled.VolumeUp, NleGreen, onClick = { openEditSheet(NleSheet.AUDIO) }, modifier = Modifier.weight(1f).testTag("dock_audio_btn"))
+                NleDockButton("কথা/ভয়েস", Icons.Default.TextFields, Color(0xFFA78BFA), onClick = { openEditSheet(NleSheet.FACE_DIALOGUE) }, modifier = Modifier.weight(1f).testTag("dock_talk_btn"))
+                NleDockButton("ক্যামেরা", Icons.Default.AutoAwesome, StudioCyan, onClick = { openEditSheet(NleSheet.CAMERA) }, modifier = Modifier.weight(1f).testTag("dock_camera_btn"))
+                NleDockButton("কিফ্রেম", Icons.Default.Diamond, Color(0xFFE2E8F0), onClick = { openEditSheet(NleSheet.KEYFRAMES) }, modifier = Modifier.weight(1f).testTag("dock_keys_btn"))
             }
         }
     }
 
-    // MODAL BOTTOM SHEET FOR FULL TOONMOTION STUDIO TOOLS
+    // MODAL BOTTOM SHEET WITH LIVE MINI STAGE PREVIEW + OK / CANCEL TRANSACTION BAR
     if (activeSheet != NleSheet.NONE) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
-            onDismissRequest = { activeSheet = NleSheet.NONE },
+            onDismissRequest = { cancelEditSheet() },
             sheetState = sheetState,
             containerColor = NleSurface,
             contentColor = Color.White
@@ -1104,8 +1417,9 @@ fun StudioNleWorkspace(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(480.dp)
+                    .height(580.dp)
             ) {
+                // Header
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1117,183 +1431,314 @@ fun StudioNleWorkspace(
                     if (activeSheet == NleSheet.CAST_AND_SCENE) {
                         Button(
                             onClick = {
-                                activeSheet = NleSheet.NONE
+                                confirmEditSheet()
                                 onNavigate(StudioDestination.CHARACTER_STUDIO)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = StudioCyan, contentColor = NleBackground),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                         ) {
-                            Text("Character Creator", style = MaterialTheme.typography.labelSmall)
+                            Text("ক্যারেক্টার ক্রিয়েটর", style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
 
-                when (activeSheet) {
-                    NleSheet.CAST_AND_SCENE, NleSheet.MOTIONS -> AnimationStudioPanel(
-                        scene = scene,
-                        characterLibrary = characterLibrary,
-                        selectedCharInstanceId = selectedCharInstanceId,
-                        selectedPropId = selectedPropId,
-                        selectedJoint = selectedJoint,
-                        rigControlMode = rigControlMode,
-                        onSelectCharacterInstance = onSelectCharacterInstance,
-                        onAddCharacterToScene = onAddCharacterToScene,
-                        onRemoveCharacterFromScene = onRemoveCharacterFromScene,
-                        onUpdateCharacterTransform = onUpdateCharacterTransform,
-                        onAddMotionClip = onAddMotionClip,
-                        onRigControlModeChange = onRigControlModeChange,
-                        onEnterRigMode = { onToolModeChange(StageToolMode.RIG_POSE) },
-                        onSelectJoint = onSelectJoint,
-                        onUpdateJointAngle = onUpdateJointAngle,
-                        onResetPose = onResetPose,
-                        onApplySavedPose = onApplySavedPose,
-                        onSaveCustomPose = onSaveCustomPose,
-                        onSetFaceState = onSetFaceState,
-                        onSayDialogue = onSayDialogue,
-                        onApplyInteraction = onApplyInteraction,
-                        onAddProp = onAddProp,
-                        onSelectProp = onSelectProp,
-                        onUpdateProp = onUpdateProp,
-                        onDeleteProp = onDeleteProp,
-                        initialSubTab = 0
-                    )
-                    NleSheet.RIG_POSE -> AnimationStudioPanel(
-                        scene = scene,
-                        characterLibrary = characterLibrary,
-                        selectedCharInstanceId = selectedCharInstanceId,
-                        selectedPropId = selectedPropId,
-                        selectedJoint = selectedJoint,
-                        rigControlMode = rigControlMode,
-                        onSelectCharacterInstance = onSelectCharacterInstance,
-                        onAddCharacterToScene = onAddCharacterToScene,
-                        onRemoveCharacterFromScene = onRemoveCharacterFromScene,
-                        onUpdateCharacterTransform = onUpdateCharacterTransform,
-                        onAddMotionClip = onAddMotionClip,
-                        onRigControlModeChange = onRigControlModeChange,
-                        onEnterRigMode = { onToolModeChange(StageToolMode.RIG_POSE) },
-                        onSelectJoint = onSelectJoint,
-                        onUpdateJointAngle = onUpdateJointAngle,
-                        onResetPose = onResetPose,
-                        onApplySavedPose = onApplySavedPose,
-                        onSaveCustomPose = onSaveCustomPose,
-                        onSetFaceState = onSetFaceState,
-                        onSayDialogue = onSayDialogue,
-                        onApplyInteraction = onApplyInteraction,
-                        onAddProp = onAddProp,
-                        onSelectProp = onSelectProp,
-                        onUpdateProp = onUpdateProp,
-                        onDeleteProp = onDeleteProp,
-                        initialSubTab = 1
-                    )
-                    NleSheet.FACE_DIALOGUE -> AnimationStudioPanel(
-                        scene = scene,
-                        characterLibrary = characterLibrary,
-                        selectedCharInstanceId = selectedCharInstanceId,
-                        selectedPropId = selectedPropId,
-                        selectedJoint = selectedJoint,
-                        rigControlMode = rigControlMode,
-                        onSelectCharacterInstance = onSelectCharacterInstance,
-                        onAddCharacterToScene = onAddCharacterToScene,
-                        onRemoveCharacterFromScene = onRemoveCharacterFromScene,
-                        onUpdateCharacterTransform = onUpdateCharacterTransform,
-                        onAddMotionClip = onAddMotionClip,
-                        onRigControlModeChange = onRigControlModeChange,
-                        onEnterRigMode = { onToolModeChange(StageToolMode.RIG_POSE) },
-                        onSelectJoint = onSelectJoint,
-                        onUpdateJointAngle = onUpdateJointAngle,
-                        onResetPose = onResetPose,
-                        onApplySavedPose = onApplySavedPose,
-                        onSaveCustomPose = onSaveCustomPose,
-                        onSetFaceState = onSetFaceState,
-                        onSayDialogue = onSayDialogue,
-                        onApplyInteraction = onApplyInteraction,
-                        onAddProp = onAddProp,
-                        onSelectProp = onSelectProp,
-                        onUpdateProp = onUpdateProp,
-                        onDeleteProp = onDeleteProp,
-                        initialSubTab = 2
-                    )
-                    NleSheet.INTERACT_PROPS -> AnimationStudioPanel(
-                        scene = scene,
-                        characterLibrary = characterLibrary,
-                        selectedCharInstanceId = selectedCharInstanceId,
-                        selectedPropId = selectedPropId,
-                        selectedJoint = selectedJoint,
-                        rigControlMode = rigControlMode,
-                        onSelectCharacterInstance = onSelectCharacterInstance,
-                        onAddCharacterToScene = onAddCharacterToScene,
-                        onRemoveCharacterFromScene = onRemoveCharacterFromScene,
-                        onUpdateCharacterTransform = onUpdateCharacterTransform,
-                        onAddMotionClip = onAddMotionClip,
-                        onRigControlModeChange = onRigControlModeChange,
-                        onEnterRigMode = { onToolModeChange(StageToolMode.RIG_POSE) },
-                        onSelectJoint = onSelectJoint,
-                        onUpdateJointAngle = onUpdateJointAngle,
-                        onResetPose = onResetPose,
-                        onApplySavedPose = onApplySavedPose,
-                        onSaveCustomPose = onSaveCustomPose,
-                        onSetFaceState = onSetFaceState,
-                        onSayDialogue = onSayDialogue,
-                        onApplyInteraction = onApplyInteraction,
-                        onAddProp = onAddProp,
-                        onSelectProp = onSelectProp,
-                        onUpdateProp = onUpdateProp,
-                        onDeleteProp = onDeleteProp,
-                        initialSubTab = 4
-                    )
-                    NleSheet.SCENE_ENV -> SceneStudioPanel(
-                        scenes = project.scenes,
-                        activeSceneIndex = project.activeSceneIndex,
-                        activeScene = scene,
-                        onSwitchScene = onSwitchScene,
-                        onAddScene = onAddScene,
-                        onSaveSceneTemplate = onSaveSceneTemplate,
-                        onUpdateEnvironment = onUpdateEnvironment,
-                        onImportBackgroundUri = onImportBackgroundUri
-                    )
-                    NleSheet.CAMERA -> CameraStudioPanel(
-                        scene = scene,
-                        selectedCameraId = selectedCameraId,
-                        onSelectCamera = onSelectCamera,
-                        onAddCamera = onAddCamera,
-                        onUpdateCamera = onUpdateCamera,
-                        onApplyAnglePreset = onApplyAnglePreset,
-                        onApplyMotionPreset = onApplyMotionPreset,
-                        onAddCameraCut = onAddCameraCut,
-                        onSetFollowCharacter = onSetFollowCharacter,
-                        onRunAiAutoCamera = onRunAiAutoCamera,
-                        onEnterCameraTouchMode = {
-                            onToolModeChange(StageToolMode.CAMERA_NAV)
-                            activeSheet = NleSheet.NONE
+                // Live Mini Stage Preview inside the Sheet so user sees character/scene updates immediately!
+                val sheetStageRatio = (project.aspectRatio.widthRatio.toFloat() / project.aspectRatio.heightRatio.toFloat())
+                    .coerceIn(0.56f, 1.85f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(132.dp)
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF060911))
+                        .border(1.dp, NleBorder, RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .aspectRatio(sheetStageRatio, matchHeightConstraintsFirst = true)
+                    ) {
+                        drawIntoCanvas { canvas ->
+                            StageRenderer.drawScene(
+                                canvas = canvas.nativeCanvas,
+                                width = size.width,
+                                height = size.height,
+                                scene = scene,
+                                evaluated = evaluated,
+                                characterLibrary = charMap,
+                                options = StageRenderer.RenderOptions(
+                                    showRigOverlay = activeSheet == NleSheet.RIG_POSE,
+                                    selectedCharacterId = selectedCharInstanceId,
+                                    selectedJoint = selectedJoint,
+                                    selectedPropId = selectedPropId,
+                                    showCameraGuides = activeSheet == NleSheet.CAMERA,
+                                    customBackgroundBitmap = customBgBitmap,
+                                    customCharacterBitmaps = customCharacterBitmaps
+                                )
+                            )
                         }
-                    )
-                    NleSheet.AUDIO -> AudioStudioPanel(
-                        scene = scene,
-                        selectedAudioClipId = selectedAudioClipId,
-                        selectedCharInstanceId = selectedCharInstanceId,
-                        isRecordingVoice = isRecordingVoice,
-                        onSelectAudioClip = onSelectAudioClip,
-                        onPreviewAsset = onPreviewAsset,
-                        onAddAsset = onAddAsset,
-                        onStartRecording = onStartRecording,
-                        onStopRecording = onStopRecording,
-                        onGenerateDialogue = onSayDialogue,
-                        onImportAudioUri = onImportAudioUri,
-                        onPreviewClip = onPreviewClip,
-                        onUpdateClip = onUpdateClip,
-                        onSplitClip = onSplitClip,
-                        onDuplicateClip = onDuplicateClip,
-                        onDeleteClip = onDeleteClip,
-                        initialSubTab = 0
-                    )
-                    NleSheet.KEYFRAMES -> NleKeyframeAndPropsSheet(
-                        scene = scene,
-                        playheadMs = playheadMs,
-                        onAddKeyframe = onAddKeyframe,
-                        onAddProp = onAddProp,
-                        onOpenInteractions = { activeSheet = NleSheet.INTERACT_PROPS }
-                    )
-                    NleSheet.NONE -> Unit
+                    }
+                    // Live Preview Pill & Play/Pause Control
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(NleBackground.copy(alpha = 0.78f))
+                            .padding(horizontal = 6.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(NleGreen))
+                        Text("লাইভ প্রিভিউ • ${formatTimecode(playheadMs, project.fps)}", fontSize = 9.sp, color = StudioCyan)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp)
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(NleGold)
+                            .clickable { onTogglePlay() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "প্রিভিউ চালান",
+                            tint = NleBackground,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Tool Panel Content
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    when (activeSheet) {
+                        NleSheet.CAST_AND_SCENE, NleSheet.MOTIONS -> AnimationStudioPanel(
+                            scene = scene,
+                            characterLibrary = characterLibrary,
+                            selectedCharInstanceId = selectedCharInstanceId,
+                            selectedPropId = selectedPropId,
+                            selectedJoint = selectedJoint,
+                            rigControlMode = rigControlMode,
+                            onSelectCharacterInstance = onSelectCharacterInstance,
+                            onAddCharacterToScene = onAddCharacterToScene,
+                            onImportCustomCharacterUri = onImportCustomCharacterUri,
+                            onRemoveCharacterFromScene = onRemoveCharacterFromScene,
+                            onUpdateCharacterTransform = onUpdateCharacterTransform,
+                            onApplyQuickHumanPosture = onApplyQuickHumanPosture,
+                            onAddMotionClip = onAddMotionClip,
+                            onRigControlModeChange = onRigControlModeChange,
+                            onEnterRigMode = { onToolModeChange(StageToolMode.RIG_POSE) },
+                            onSelectJoint = onSelectJoint,
+                            onUpdateJointAngle = onUpdateJointAngle,
+                            onResetPose = onResetPose,
+                            onApplySavedPose = onApplySavedPose,
+                            onSaveCustomPose = onSaveCustomPose,
+                            onSetFaceState = onSetFaceState,
+                            onSuggestVoiceEmotion = onSuggestVoiceEmotion,
+                            onPreviewVoice = onPreviewVoice,
+                            onSayDialogue = onSayDialogue,
+                            onApplyInteraction = onApplyInteraction,
+                            onAddProp = onAddProp,
+                            onSelectProp = onSelectProp,
+                            onUpdateProp = onUpdateProp,
+                            onDeleteProp = onDeleteProp,
+                            initialSubTab = 0
+                        )
+                        NleSheet.RIG_POSE -> AnimationStudioPanel(
+                            scene = scene,
+                            characterLibrary = characterLibrary,
+                            selectedCharInstanceId = selectedCharInstanceId,
+                            selectedPropId = selectedPropId,
+                            selectedJoint = selectedJoint,
+                            rigControlMode = rigControlMode,
+                            onSelectCharacterInstance = onSelectCharacterInstance,
+                            onAddCharacterToScene = onAddCharacterToScene,
+                            onImportCustomCharacterUri = onImportCustomCharacterUri,
+                            onRemoveCharacterFromScene = onRemoveCharacterFromScene,
+                            onUpdateCharacterTransform = onUpdateCharacterTransform,
+                            onApplyQuickHumanPosture = onApplyQuickHumanPosture,
+                            onAddMotionClip = onAddMotionClip,
+                            onRigControlModeChange = onRigControlModeChange,
+                            onEnterRigMode = { onToolModeChange(StageToolMode.RIG_POSE) },
+                            onSelectJoint = onSelectJoint,
+                            onUpdateJointAngle = onUpdateJointAngle,
+                            onResetPose = onResetPose,
+                            onApplySavedPose = onApplySavedPose,
+                            onSaveCustomPose = onSaveCustomPose,
+                            onSetFaceState = onSetFaceState,
+                            onSuggestVoiceEmotion = onSuggestVoiceEmotion,
+                            onPreviewVoice = onPreviewVoice,
+                            onSayDialogue = onSayDialogue,
+                            onApplyInteraction = onApplyInteraction,
+                            onAddProp = onAddProp,
+                            onSelectProp = onSelectProp,
+                            onUpdateProp = onUpdateProp,
+                            onDeleteProp = onDeleteProp,
+                            initialSubTab = 1
+                        )
+                        NleSheet.FACE_DIALOGUE -> AnimationStudioPanel(
+                            scene = scene,
+                            characterLibrary = characterLibrary,
+                            selectedCharInstanceId = selectedCharInstanceId,
+                            selectedPropId = selectedPropId,
+                            selectedJoint = selectedJoint,
+                            rigControlMode = rigControlMode,
+                            onSelectCharacterInstance = onSelectCharacterInstance,
+                            onAddCharacterToScene = onAddCharacterToScene,
+                            onImportCustomCharacterUri = onImportCustomCharacterUri,
+                            onRemoveCharacterFromScene = onRemoveCharacterFromScene,
+                            onUpdateCharacterTransform = onUpdateCharacterTransform,
+                            onApplyQuickHumanPosture = onApplyQuickHumanPosture,
+                            onAddMotionClip = onAddMotionClip,
+                            onRigControlModeChange = onRigControlModeChange,
+                            onEnterRigMode = { onToolModeChange(StageToolMode.RIG_POSE) },
+                            onSelectJoint = onSelectJoint,
+                            onUpdateJointAngle = onUpdateJointAngle,
+                            onResetPose = onResetPose,
+                            onApplySavedPose = onApplySavedPose,
+                            onSaveCustomPose = onSaveCustomPose,
+                            onSetFaceState = onSetFaceState,
+                            onSuggestVoiceEmotion = onSuggestVoiceEmotion,
+                            onPreviewVoice = onPreviewVoice,
+                            onSayDialogue = onSayDialogue,
+                            onApplyInteraction = onApplyInteraction,
+                            onAddProp = onAddProp,
+                            onSelectProp = onSelectProp,
+                            onUpdateProp = onUpdateProp,
+                            onDeleteProp = onDeleteProp,
+                            initialSubTab = 2
+                        )
+                        NleSheet.INTERACT_PROPS -> AnimationStudioPanel(
+                            scene = scene,
+                            characterLibrary = characterLibrary,
+                            selectedCharInstanceId = selectedCharInstanceId,
+                            selectedPropId = selectedPropId,
+                            selectedJoint = selectedJoint,
+                            rigControlMode = rigControlMode,
+                            onSelectCharacterInstance = onSelectCharacterInstance,
+                            onAddCharacterToScene = onAddCharacterToScene,
+                            onImportCustomCharacterUri = onImportCustomCharacterUri,
+                            onRemoveCharacterFromScene = onRemoveCharacterFromScene,
+                            onUpdateCharacterTransform = onUpdateCharacterTransform,
+                            onApplyQuickHumanPosture = onApplyQuickHumanPosture,
+                            onAddMotionClip = onAddMotionClip,
+                            onRigControlModeChange = onRigControlModeChange,
+                            onEnterRigMode = { onToolModeChange(StageToolMode.RIG_POSE) },
+                            onSelectJoint = onSelectJoint,
+                            onUpdateJointAngle = onUpdateJointAngle,
+                            onResetPose = onResetPose,
+                            onApplySavedPose = onApplySavedPose,
+                            onSaveCustomPose = onSaveCustomPose,
+                            onSetFaceState = onSetFaceState,
+                            onSuggestVoiceEmotion = onSuggestVoiceEmotion,
+                            onPreviewVoice = onPreviewVoice,
+                            onSayDialogue = onSayDialogue,
+                            onApplyInteraction = onApplyInteraction,
+                            onAddProp = onAddProp,
+                            onSelectProp = onSelectProp,
+                            onUpdateProp = onUpdateProp,
+                            onDeleteProp = onDeleteProp,
+                            initialSubTab = 4
+                        )
+                        NleSheet.SCENE_ENV -> SceneStudioPanel(
+                            scenes = project.scenes,
+                            activeSceneIndex = project.activeSceneIndex,
+                            activeScene = scene,
+                            onSwitchScene = onSwitchScene,
+                            onAddScene = onAddScene,
+                            onSaveSceneTemplate = onSaveSceneTemplate,
+                            onUpdateEnvironment = onUpdateEnvironment,
+                            onImportBackgroundUri = onImportBackgroundUri
+                        )
+                        NleSheet.CAMERA -> CameraStudioPanel(
+                            scene = scene,
+                            selectedCameraId = selectedCameraId,
+                            onSelectCamera = onSelectCamera,
+                            onAddCamera = onAddCamera,
+                            onUpdateCamera = onUpdateCamera,
+                            onApplyAnglePreset = onApplyAnglePreset,
+                            onApplyMotionPreset = onApplyMotionPreset,
+                            onAddCameraCut = onAddCameraCut,
+                            onSetFollowCharacter = onSetFollowCharacter,
+                            onRunAiAutoCamera = onRunAiAutoCamera,
+                            onEnterCameraTouchMode = {
+                                onToolModeChange(StageToolMode.CAMERA_NAV)
+                                confirmEditSheet()
+                            },
+                            onFocusCharacterAtPlayhead = { charId ->
+                                onFocusCameraOnCharacter(charId)
+                            },
+                            onResetWideAtPlayhead = {
+                                onResetCameraWide()
+                            }
+                        )
+                        NleSheet.AUDIO -> AudioStudioPanel(
+                            scene = scene,
+                            selectedAudioClipId = selectedAudioClipId,
+                            selectedCharInstanceId = selectedCharInstanceId,
+                            isRecordingVoice = isRecordingVoice,
+                            onSelectAudioClip = onSelectAudioClip,
+                            onPreviewAsset = onPreviewAsset,
+                            onAddAsset = onAddAsset,
+                            onStartRecording = onStartRecording,
+                            onStopRecording = onStopRecording,
+                            onSuggestVoiceEmotion = onSuggestVoiceEmotion,
+                            onPreviewVoice = onPreviewVoice,
+                            onGenerateDialogue = onSayDialogue,
+                            onImportAudioUri = onImportAudioUri,
+                            onPreviewClip = onPreviewClip,
+                            onUpdateClip = onUpdateClip,
+                            onSplitClip = onSplitClip,
+                            onDuplicateClip = onDuplicateClip,
+                            onDeleteClip = onDeleteClip,
+                            initialSubTab = 0
+                        )
+                        NleSheet.KEYFRAMES -> NleKeyframeAndPropsSheet(
+                            scene = scene,
+                            playheadMs = playheadMs,
+                            onAddKeyframe = onAddKeyframe,
+                            onAddProp = onAddProp,
+                            onOpenInteractions = { activeSheet = NleSheet.INTERACT_PROPS }
+                        )
+                        NleSheet.NONE -> Unit
+                    }
+                }
+
+                // Bottom Sticky OK / Cancel Confirmation Bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(NleSurfaceElevated)
+                        .border(1.dp, NleBorder)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = { cancelEditSheet() },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("sheet_cancel_btn")
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = null, tint = StudioCoral, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("বাতিল", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    }
+                    Button(
+                        onClick = { confirmEditSheet() },
+                        colors = ButtonDefaults.buttonColors(containerColor = NleGold, contentColor = NleBackground),
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .testTag("sheet_ok_btn")
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("ওকে • সংরক্ষণ করুন", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -1401,19 +1846,214 @@ private fun NleDockButton(
     }
 }
 
+private data class NleRenderClip(
+    val id: String,
+    val category: TimelineClipCategory,
+    val label: String,
+    val startMs: Long,
+    val endMs: Long,
+    val preferredRow: Int,
+    val visualRow: Int = 0
+)
+
+private fun extractTrackClips(kind: TimelineTrackKind, scene: StudioScene): List<NleRenderClip> {
+    val dur = scene.durationMs.coerceAtLeast(1000L)
+    return when (kind) {
+        TimelineTrackKind.CHARACTER -> scene.characters.map { ch ->
+            NleRenderClip(
+                id = ch.id,
+                category = TimelineClipCategory.CHARACTER,
+                label = ch.name,
+                startMs = ch.startTimeMs,
+                endMs = (ch.endTimeMs ?: dur).coerceAtLeast(ch.startTimeMs + 250L),
+                preferredRow = ch.trackRow
+            )
+        }
+        TimelineTrackKind.BODY_ANIMATION -> scene.motionClips.map { clip ->
+            NleRenderClip(
+                id = clip.id,
+                category = TimelineClipCategory.BODY_MOTION,
+                label = clip.displayName,
+                startMs = clip.startTimeMs,
+                endMs = clip.endTimeMs.coerceAtLeast(clip.startTimeMs + 250L),
+                preferredRow = clip.trackRow
+            )
+        }
+        TimelineTrackKind.FACE_ANIMATION -> scene.faceClips.map { fc ->
+            NleRenderClip(
+                id = fc.id,
+                category = TimelineClipCategory.FACE_EXPR,
+                label = fc.expression.label,
+                startMs = fc.startTimeMs,
+                endMs = fc.endTimeMs.coerceAtLeast(fc.startTimeMs + 250L),
+                preferredRow = fc.trackRow
+            )
+        }
+        TimelineTrackKind.EYE_ANIMATION -> scene.faceClips.map { fc ->
+            NleRenderClip(
+                id = fc.id,
+                category = TimelineClipCategory.FACE_EXPR,
+                label = "চোখ: ${fc.eyeDirection.label}",
+                startMs = fc.startTimeMs,
+                endMs = fc.endTimeMs.coerceAtLeast(fc.startTimeMs + 250L),
+                preferredRow = fc.trackRow
+            )
+        }
+        TimelineTrackKind.LIP_SYNC -> scene.audioClips
+            .filter { it.dialogueText.isNotBlank() || it.trackType == AudioTrackType.DIALOGUE }
+            .map { ac ->
+                NleRenderClip(
+                    id = ac.id,
+                    category = TimelineClipCategory.AUDIO,
+                    label = "লিপ: ${ac.title}",
+                    startMs = ac.startTimeMs,
+                    endMs = ac.endTimeMs.coerceAtLeast(ac.startTimeMs + 250L),
+                    preferredRow = ac.trackRow
+                )
+            }
+        TimelineTrackKind.DIALOGUE, TimelineTrackKind.VOICE, TimelineTrackKind.SOUND_EFFECTS, TimelineTrackKind.MUSIC -> {
+            val targetType = when (kind) {
+                TimelineTrackKind.DIALOGUE -> AudioTrackType.DIALOGUE
+                TimelineTrackKind.VOICE -> AudioTrackType.VOICE
+                TimelineTrackKind.SOUND_EFFECTS -> AudioTrackType.SFX
+                else -> AudioTrackType.MUSIC
+            }
+            scene.audioClips.filter { it.trackType == targetType }.map { ac ->
+                NleRenderClip(
+                    id = ac.id,
+                    category = TimelineClipCategory.AUDIO,
+                    label = ac.title,
+                    startMs = ac.startTimeMs,
+                    endMs = ac.endTimeMs.coerceAtLeast(ac.startTimeMs + 250L),
+                    preferredRow = ac.trackRow
+                )
+            }
+        }
+        TimelineTrackKind.OBJECT -> scene.props.map { prop ->
+            NleRenderClip(
+                id = prop.id,
+                category = TimelineClipCategory.PROP,
+                label = prop.label,
+                startMs = prop.startTimeMs,
+                endMs = (prop.endTimeMs ?: dur).coerceAtLeast(prop.startTimeMs + 250L),
+                preferredRow = prop.trackRow
+            )
+        }
+        TimelineTrackKind.CAMERA -> scene.cameraCuts.map { cut ->
+            val targetName = cut.targetCharacterId?.let { cid ->
+                scene.characters.find { it.id == cid }?.name
+            }
+            val cutLabel = when {
+                targetName != null -> "ক্যামেরা → $targetName"
+                cut.targetZoom == 1.0f -> "পুরো দৃশ্য"
+                else -> cut.motionType.label
+            }
+            NleRenderClip(
+                id = cut.id,
+                category = TimelineClipCategory.CAMERA_CUT,
+                label = cutLabel,
+                startMs = cut.startTimeMs,
+                endMs = cut.endTimeMs.coerceAtLeast(cut.startTimeMs + 250L),
+                preferredRow = cut.trackRow
+            )
+        }
+        TimelineTrackKind.SCENE -> emptyList()
+    }
+}
+
+private fun assignClipSubLanes(rawClips: List<NleRenderClip>): Pair<List<NleRenderClip>, Int> {
+    if (rawClips.isEmpty()) return emptyList<NleRenderClip>() to 1
+    val sorted = rawClips.sortedWith(compareBy<NleRenderClip> { it.preferredRow }.thenBy { it.startMs })
+    val placed = mutableListOf<NleRenderClip>()
+    for (clip in sorted) {
+        var row = clip.preferredRow.coerceIn(0, 6)
+        while (placed.any { p -> p.visualRow == row && clip.startMs < p.endMs && clip.endMs > p.startMs }) {
+            row++
+        }
+        placed.add(clip.copy(visualRow = row))
+    }
+    val laneCount = (placed.maxOfOrNull { it.visualRow } ?: 0) + 1
+    return placed to laneCount
+}
+
+private fun resolveSelectedClipInfo(scene: StudioScene, sel: TimelineClipSelection?): NleRenderClip? {
+    sel ?: return null
+    val dur = scene.durationMs.coerceAtLeast(1000L)
+    return when (sel.category) {
+        TimelineClipCategory.CHARACTER -> scene.characters.find { it.id == sel.id }?.let {
+            NleRenderClip(it.id, sel.category, it.name, it.startTimeMs, it.endTimeMs ?: dur, it.trackRow)
+        }
+        TimelineClipCategory.BODY_MOTION -> scene.motionClips.find { it.id == sel.id }?.let {
+            NleRenderClip(it.id, sel.category, it.displayName, it.startTimeMs, it.endTimeMs, it.trackRow)
+        }
+        TimelineClipCategory.FACE_EXPR -> scene.faceClips.find { it.id == sel.id }?.let {
+            NleRenderClip(it.id, sel.category, it.expression.label, it.startTimeMs, it.endTimeMs, it.trackRow)
+        }
+        TimelineClipCategory.AUDIO -> scene.audioClips.find { it.id == sel.id }?.let {
+            NleRenderClip(it.id, sel.category, it.title, it.startTimeMs, it.endTimeMs, it.trackRow)
+        }
+        TimelineClipCategory.PROP -> scene.props.find { it.id == sel.id }?.let {
+            NleRenderClip(it.id, sel.category, it.label, it.startTimeMs, it.endTimeMs ?: dur, it.trackRow)
+        }
+        TimelineClipCategory.CAMERA_CUT -> scene.cameraCuts.find { it.id == sel.id }?.let { cut ->
+            val targetName = cut.targetCharacterId?.let { cid -> scene.characters.find { it.id == cid }?.name }
+            val label = if (targetName != null) "ক্যামেরা → $targetName" else cut.motionType.label
+            NleRenderClip(cut.id, sel.category, label, cut.startTimeMs, cut.endTimeMs, cut.trackRow)
+        }
+    }
+}
+
+private fun nleCategoryColor(category: TimelineClipCategory): Color = when (category) {
+    TimelineClipCategory.CHARACTER -> TrackCharacterColor
+    TimelineClipCategory.BODY_MOTION -> TrackBodyColor
+    TimelineClipCategory.FACE_EXPR -> TrackFaceColor
+    TimelineClipCategory.AUDIO -> TrackDialogueColor
+    TimelineClipCategory.PROP -> TrackObjectColor
+    TimelineClipCategory.CAMERA_CUT -> TrackCameraColor
+}
+
+@Composable
+private fun NleQuickChip(
+    label: String,
+    icon: ImageVector,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .height(24.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF162033))
+            .border(0.8.dp, tint.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(12.dp))
+        Text(label, fontSize = 10.sp, color = tint, maxLines = 1)
+    }
+}
+
 @Composable
 private fun NleTimelineLane(
     kind: TimelineTrackKind,
     scene: StudioScene,
+    packedClips: List<NleRenderClip>,
+    laneCount: Int,
+    laneRowDp: Dp,
+    laneRowPx: Float,
     trackWidth: Dp,
+    trackWidthPx: Float,
     isHidden: Boolean,
     isLocked: Boolean,
+    selectedTimelineClip: TimelineClipSelection?,
     onSeek: (Long) -> Unit,
+    onSelectTimelineClip: (TimelineClipSelection?) -> Unit,
+    onMoveTimelineClip: (TimelineClipCategory, String, Long, Int) -> Unit,
+    onResizeTimelineClip: (TimelineClipCategory, String, Long, Long) -> Unit,
     onDeleteKeyframe: (String) -> Unit,
-    onDeleteMotionClip: (String) -> Unit,
-    onTrimMotionClipEnd: (String, Long) -> Unit,
-    onDeleteCameraCut: (String) -> Unit,
-    onSelectAudioClip: (String?) -> Unit
+    onOpenSheet: () -> Unit
 ) {
     val totalMs = scene.durationMs.coerceAtLeast(1L).toFloat()
     val laneColor = if (isHidden) Color(0xFF475569) else nleTrackColor(kind)
@@ -1425,134 +2065,261 @@ private fun NleTimelineLane(
             .clip(RoundedCornerShape(8.dp))
             .background(if (isHidden) Color(0xFF090C14) else Color(0xFF0C101B))
             .border(0.5.dp, if (isLocked) NleGold.copy(alpha = 0.35f) else Color(0xFF1A2236), RoundedCornerShape(8.dp))
+            .pointerInput(scene.durationMs, trackWidthPx) {
+                detectTapGestures { offset ->
+                    val frac = (offset.x / trackWidthPx).coerceIn(0f, 1f)
+                    onSeek((frac * scene.durationMs).toLong())
+                }
+            }
     ) {
-        when (kind) {
-            TimelineTrackKind.BODY_ANIMATION -> {
-                scene.motionClips.forEach { clip ->
-                    val startFrac = (clip.startTimeMs / totalMs).coerceIn(0f, 1f)
-                    val lenFrac = ((clip.endTimeMs - clip.startTimeMs) / totalMs).coerceIn(0.04f, 1f)
-                    NleClipBlock(
-                        label = clip.displayName,
-                        color = laneColor,
-                        offsetX = trackWidth * startFrac,
-                        width = trackWidth * lenFrac,
-                        onExtend = if (isLocked) null else ({ onTrimMotionClipEnd(clip.id, 400L) }),
-                        onDelete = if (isLocked) null else ({ onDeleteMotionClip(clip.id) }),
-                        onTap = { onSeek(clip.startTimeMs) }
-                    )
-                }
+        // Subtle sub-lane separator lines when a layer has multiple stacked rows
+        for (rowIdx in 1 until laneCount) {
+            Box(
+                modifier = Modifier
+                    .offset(y = (laneRowDp * rowIdx) + 3.dp)
+                    .fillMaxWidth()
+                    .height(0.5.dp)
+                    .background(Color(0xFF1E293B))
+            )
+        }
+
+        // Scene track displays full background span + tap-to-edit
+        if (kind == TimelineTrackKind.SCENE) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(laneRowDp - 4.dp)
+                    .padding(horizontal = 2.dp, vertical = 3.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(laneColor.copy(alpha = 0.16f))
+                    .border(1.dp, laneColor.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                    .clickable { if (!isLocked) onOpenSheet() }
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${scene.name} • ${scene.background.label} (${"%.1f".format(scene.durationMs / 1000f)}s)",
+                    fontSize = 10.sp,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            TimelineTrackKind.FACE_ANIMATION -> {
-                scene.faceClips.forEach { fc ->
-                    val startFrac = (fc.startTimeMs / totalMs).coerceIn(0f, 1f)
-                    val lenFrac = ((fc.endTimeMs - fc.startTimeMs) / totalMs).coerceIn(0.04f, 1f)
-                    NleClipBlock(
-                        label = fc.expression.label,
-                        color = laneColor,
-                        offsetX = trackWidth * startFrac,
-                        width = trackWidth * lenFrac,
-                        onTap = { onSeek(fc.startTimeMs) }
-                    )
+        }
+
+        // Interactive draggable & edge-resizable clips
+        packedClips.forEach { clip ->
+            val isSelected = selectedTimelineClip?.id == clip.id && selectedTimelineClip.category == clip.category
+            NleInteractiveClipBlock(
+                clip = clip,
+                color = laneColor,
+                totalMs = totalMs,
+                trackWidth = trackWidth,
+                trackWidthPx = trackWidthPx,
+                laneRowDp = laneRowDp,
+                laneRowPx = laneRowPx,
+                isSelected = isSelected,
+                isLocked = isLocked,
+                onSelect = {
+                    onSelectTimelineClip(TimelineClipSelection(clip.category, clip.id))
+                    onSeek(clip.startMs)
+                },
+                onMove = { newStartMs, deltaRow ->
+                    onMoveTimelineClip(clip.category, clip.id, newStartMs, deltaRow)
+                },
+                onResize = { newStartMs, newEndMs ->
+                    onResizeTimelineClip(clip.category, clip.id, newStartMs, newEndMs)
                 }
-            }
-            TimelineTrackKind.DIALOGUE, TimelineTrackKind.VOICE, TimelineTrackKind.SOUND_EFFECTS, TimelineTrackKind.MUSIC -> {
-                val targetType = when (kind) {
-                    TimelineTrackKind.DIALOGUE -> AudioTrackType.DIALOGUE
-                    TimelineTrackKind.VOICE -> AudioTrackType.VOICE
-                    TimelineTrackKind.SOUND_EFFECTS -> AudioTrackType.SFX
-                    else -> AudioTrackType.MUSIC
-                }
-                scene.audioClips.filter { it.trackType == targetType }.forEach { ac ->
-                    val startFrac = (ac.startTimeMs / totalMs).coerceIn(0f, 1f)
-                    val lenFrac = (ac.effectiveDurationMs / totalMs).coerceIn(0.04f, 1f)
-                    NleClipBlock(
-                        label = ac.title,
-                        color = laneColor,
-                        offsetX = trackWidth * startFrac,
-                        width = trackWidth * lenFrac,
-                        onTap = {
-                            onSelectAudioClip(ac.id)
-                            onSeek(ac.startTimeMs)
-                        }
-                    )
-                }
-            }
-            TimelineTrackKind.CAMERA -> {
-                scene.cameraCuts.forEach { cut ->
-                    val startFrac = (cut.startTimeMs / totalMs).coerceIn(0f, 1f)
-                    val lenFrac = ((cut.endTimeMs - cut.startTimeMs) / totalMs).coerceIn(0.04f, 1f)
-                    NleClipBlock(
-                        label = cut.motionType.label,
-                        color = laneColor,
-                        offsetX = trackWidth * startFrac,
-                        width = trackWidth * lenFrac,
-                        onDelete = if (isLocked) null else ({ onDeleteCameraCut(cut.id) }),
-                        onTap = { onSeek(cut.startTimeMs) }
-                    )
-                }
-            }
-            else -> {
-                val matchingKfs = scene.keyframes.filter { kf -> nleKfMatchesTrack(kf, kind) }
-                matchingKfs.forEach { kf ->
-                    val frac = (kf.timeMs / totalMs).coerceIn(0f, 0.98f)
-                    Surface(
-                        onClick = { if (!isLocked) onDeleteKeyframe(kf.id) },
-                        color = Color.Transparent,
-                        modifier = Modifier
-                            .offset(x = trackWidth * frac)
-                            .align(Alignment.CenterStart)
-                    ) {
-                        Icon(
-                            Icons.Default.Diamond,
-                            contentDescription = "Keyframe",
-                            tint = NleGold,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
+            )
+        }
+
+        // Keyframe diamonds overlaid cleanly along the track
+        val matchingKfs = scene.keyframes.filter { kf -> nleKfMatchesTrack(kf, kind) }
+        matchingKfs.forEach { kf ->
+            val frac = (kf.timeMs / totalMs).coerceIn(0f, 0.98f)
+            Surface(
+                onClick = { if (!isLocked) onDeleteKeyframe(kf.id) },
+                color = Color.Transparent,
+                modifier = Modifier
+                    .offset(x = trackWidth * frac)
+                    .align(Alignment.CenterStart)
+            ) {
+                Icon(
+                    Icons.Default.Diamond,
+                    contentDescription = "Keyframe",
+                    tint = NleGold,
+                    modifier = Modifier.size(15.dp)
+                )
             }
         }
     }
 }
 
 @Composable
-private fun NleClipBlock(
-    label: String,
+private fun NleInteractiveClipBlock(
+    clip: NleRenderClip,
     color: Color,
-    offsetX: Dp,
-    width: Dp,
-    onExtend: (() -> Unit)? = null,
-    onDelete: (() -> Unit)? = null,
-    onTap: () -> Unit
+    totalMs: Float,
+    trackWidth: Dp,
+    trackWidthPx: Float,
+    laneRowDp: Dp,
+    laneRowPx: Float,
+    isSelected: Boolean,
+    isLocked: Boolean,
+    onSelect: () -> Unit,
+    onMove: (Long, Int) -> Unit,
+    onResize: (Long, Long) -> Unit
 ) {
-    Row(
+    val startFrac = (clip.startMs / totalMs).coerceIn(0f, 1f)
+    val lenFrac = ((clip.endMs - clip.startMs).coerceAtLeast(200L) / totalMs).coerceIn(0.01f, 1f)
+    val baseStartPx = startFrac * trackWidthPx
+    val baseWidthPx = (lenFrac * trackWidthPx).coerceAtLeast(with(LocalDensity.current) { 24.dp.toPx() })
+    val baseTopPx = with(LocalDensity.current) { ((laneRowDp * clip.visualRow) + 3.dp).toPx() }
+
+    var dragBodyX by remember(clip.id) { mutableFloatStateOf(0f) }
+    var dragBodyY by remember(clip.id) { mutableFloatStateOf(0f) }
+    var dragLeftX by remember(clip.id) { mutableFloatStateOf(0f) }
+    var dragRightX by remember(clip.id) { mutableFloatStateOf(0f) }
+
+    val latestStartMs by rememberUpdatedState(clip.startMs)
+    val latestEndMs by rememberUpdatedState(clip.endMs)
+    val latestTotalMs by rememberUpdatedState(totalMs)
+    val latestTrackWidthPx by rememberUpdatedState(trackWidthPx)
+    val latestLaneRowPx by rememberUpdatedState(laneRowPx)
+    val latestOnSelect by rememberUpdatedState(onSelect)
+    val latestOnMove by rememberUpdatedState(onMove)
+    val latestOnResize by rememberUpdatedState(onResize)
+
+    val effectiveLeftPx = (baseStartPx + dragBodyX + dragLeftX).coerceAtLeast(0f)
+    val minWidthPx = with(LocalDensity.current) { 24.dp.toPx() }
+    val effectiveWidthPx = (baseWidthPx - dragLeftX + dragRightX).coerceAtLeast(minWidthPx)
+    val effectiveTopPx = (baseTopPx + dragBodyY).coerceAtLeast(0f)
+    val isDragging = dragBodyX != 0f || dragBodyY != 0f || dragLeftX != 0f || dragRightX != 0f
+
+    Box(
         modifier = Modifier
-            .offset(x = offsetX)
-            .width(width.coerceAtLeast(52.dp))
-            .height(30.dp)
-            .padding(vertical = 3.dp)
+            .zIndex(if (isSelected || isDragging) 2f else 0f)
+            .offset { IntOffset(effectiveLeftPx.roundToInt(), effectiveTopPx.roundToInt()) }
+            .width(with(LocalDensity.current) { effectiveWidthPx.toDp() })
+            .height(laneRowDp - 4.dp)
             .clip(RoundedCornerShape(6.dp))
-            .background(color.copy(alpha = 0.25f))
-            .border(1.dp, color.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
-            .clickable(onClick = onTap)
-            .padding(horizontal = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .background(
+                if (isSelected) color.copy(alpha = 0.42f) else color.copy(alpha = 0.26f)
+            )
+            .border(
+                width = if (isSelected || isDragging) 1.8.dp else 1.dp,
+                color = if (isSelected || isDragging) NleGold else color.copy(alpha = 0.9f),
+                shape = RoundedCornerShape(6.dp)
+            )
+            .pointerInput(clip.id, isLocked) {
+                if (isLocked) return@pointerInput
+                detectDragGestures(
+                    onDragStart = { latestOnSelect() },
+                    onDragEnd = {
+                        val msPerPx = latestTotalMs / latestTrackWidthPx.coerceAtLeast(1f)
+                        val newStart = (latestStartMs + (dragBodyX * msPerPx).toLong()).coerceAtLeast(0L)
+                        val deltaRow = (dragBodyY / latestLaneRowPx.coerceAtLeast(1f)).roundToInt()
+                        dragBodyX = 0f
+                        dragBodyY = 0f
+                        latestOnMove(newStart, deltaRow)
+                    },
+                    onDragCancel = {
+                        dragBodyX = 0f
+                        dragBodyY = 0f
+                    }
+                ) { change, dragAmount ->
+                    change.consume()
+                    dragBodyX = (dragBodyX + dragAmount.x).coerceAtLeast(-baseStartPx)
+                    dragBodyY += dragAmount.y
+                }
+            }
+            .clickable { onSelect() }
     ) {
+        // Left Resize Edge Handle
+        if (!isLocked) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(12.dp)
+                    .fillMaxHeight()
+                    .background(if (isSelected) NleGold.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.08f))
+                    .pointerInput(clip.id, isLocked) {
+                        detectDragGestures(
+                            onDragStart = { latestOnSelect() },
+                            onDragEnd = {
+                                val msPerPx = latestTotalMs / latestTrackWidthPx.coerceAtLeast(1f)
+                                val newStart = (latestStartMs + (dragLeftX * msPerPx).toLong())
+                                    .coerceIn(0L, latestEndMs - 250L)
+                                dragLeftX = 0f
+                                latestOnResize(newStart, latestEndMs)
+                            },
+                            onDragCancel = { dragLeftX = 0f }
+                        ) { change, dragAmount ->
+                            change.consume()
+                            val maxDelta = (baseWidthPx - minWidthPx).coerceAtLeast(0f)
+                            dragLeftX = (dragLeftX + dragAmount.x).coerceIn(-baseStartPx, maxDelta)
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(2.5.dp)
+                        .height(14.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(if (isSelected) NleGold else Color.White.copy(alpha = 0.7f))
+                )
+            }
+        }
+
+        // Clip Label
         Text(
-            text = label,
+            text = clip.label,
             style = MaterialTheme.typography.labelSmall,
             fontSize = 10.sp,
             color = Color.White,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(horizontal = 14.dp)
         )
-        if (onExtend != null) {
-            Icon(Icons.Default.Add, contentDescription = "Extend", tint = Color.White, modifier = Modifier.size(12.dp).clickable(onClick = onExtend))
-        }
-        if (onDelete != null) {
-            Icon(Icons.Default.Delete, contentDescription = "Remove", tint = StudioCoral, modifier = Modifier.size(12.dp).clickable(onClick = onDelete))
+
+        // Right Resize Edge Handle
+        if (!isLocked) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .width(12.dp)
+                    .fillMaxHeight()
+                    .background(if (isSelected) NleGold.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.08f))
+                    .pointerInput(clip.id, isLocked) {
+                        detectDragGestures(
+                            onDragStart = { latestOnSelect() },
+                            onDragEnd = {
+                                val msPerPx = latestTotalMs / latestTrackWidthPx.coerceAtLeast(1f)
+                                val newEnd = (latestEndMs + (dragRightX * msPerPx).toLong())
+                                    .coerceIn(latestStartMs + 250L, 60_000L)
+                                dragRightX = 0f
+                                latestOnResize(latestStartMs, newEnd)
+                            },
+                            onDragCancel = { dragRightX = 0f }
+                        ) { change, dragAmount ->
+                            change.consume()
+                            val minDelta = -(baseWidthPx - minWidthPx).coerceAtLeast(0f)
+                            dragRightX = (dragRightX + dragAmount.x).coerceAtLeast(minDelta)
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(2.5.dp)
+                        .height(14.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(if (isSelected) NleGold else Color.White.copy(alpha = 0.7f))
+                )
+            }
         }
     }
 }
@@ -1572,7 +2339,7 @@ private fun NleKeyframeAndPropsSheet(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("Quick Props & Keyframes at ${playheadMs}ms", style = MaterialTheme.typography.titleSmall, color = Color.White)
+            Text("${playheadMs} মি.সে. সময়ে দ্রুত প্রপস ও কিফ্রেম", style = MaterialTheme.typography.titleSmall, color = Color.White)
             Spacer(Modifier.height(6.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(PropType.entries) { prop ->
@@ -1584,11 +2351,11 @@ private fun NleKeyframeAndPropsSheet(
         }
         item {
             OutlinedButton(onClick = onOpenInteractions, modifier = Modifier.fillMaxWidth()) {
-                Text("Open Multi-Character Interactions & Prop Attachment")
+                Text("একাধিক ক্যারেক্টারের মিথস্ক্রিয়া ও প্রপস সংযুক্তি খুলুন")
             }
         }
         item {
-            Text("Keyframe Easing Curve", style = MaterialTheme.typography.titleSmall, color = Color.White)
+            Text("কিফ্রেম গতি কার্ভ (ইজিং)", style = MaterialTheme.typography.titleSmall, color = Color.White)
             Spacer(Modifier.height(4.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(EasingType.entries) { eas ->
@@ -1601,7 +2368,7 @@ private fun NleKeyframeAndPropsSheet(
             }
         }
         item {
-            Text("Set Keyframe at Current Playhead", style = MaterialTheme.typography.titleSmall, color = NleGold)
+            Text("বর্তমান প্লেহেডে কিফ্রেম সেট করুন", style = MaterialTheme.typography.titleSmall, color = NleGold)
             Spacer(Modifier.height(6.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(KeyframeTargetType.entries) { target ->
@@ -1617,7 +2384,7 @@ private fun NleKeyframeAndPropsSheet(
             }
         }
         item {
-            Text("Active Keyframes in Scene: ${scene.keyframes.size}", style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+            Text("দৃশ্যে সক্রিয় কিফ্রেম: ${scene.keyframes.size}টি", style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
         }
     }
 }
@@ -1635,7 +2402,8 @@ private fun sheetForTrack(kind: TimelineTrackKind): NleSheet = when (kind) {
 private fun nleKfMatchesTrack(kf: Keyframe, kind: TimelineTrackKind): Boolean = when (kind) {
     TimelineTrackKind.CHARACTER -> kf.targetType in listOf(
         KeyframeTargetType.CHAR_POS_X, KeyframeTargetType.CHAR_POS_Y,
-        KeyframeTargetType.CHAR_SCALE, KeyframeTargetType.CHAR_ROTATION, KeyframeTargetType.JOINT_ANGLE
+        KeyframeTargetType.CHAR_SCALE, KeyframeTargetType.CHAR_ROTATION,
+        KeyframeTargetType.JOINT_ANGLE, KeyframeTargetType.CHAR_VIEW_ANGLE
     )
     TimelineTrackKind.EYE_ANIMATION -> kf.targetType == KeyframeTargetType.EYE_DIR
     TimelineTrackKind.LIP_SYNC -> kf.targetType == KeyframeTargetType.MOUTH_VISEME

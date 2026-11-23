@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaCodec
@@ -20,6 +19,8 @@ import com.example.domain.model.AudioClip
 import com.example.domain.model.AudioSourceType
 import com.example.domain.model.AudioTrackType
 import com.example.domain.model.StudioScene
+import com.example.domain.model.VoiceCharacterType
+import com.example.domain.model.VoiceEmotion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -30,7 +31,89 @@ import java.nio.ByteOrder
 import java.util.Locale
 import java.util.UUID
 import kotlin.coroutines.resume
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.sin
+
+object ProceduralVoice {
+    fun containsBengaliScript(text: String): Boolean = text.any { it in '\u0980'..'\u09FF' }
+
+    fun synthesizeVocalWaveform(
+        text: String,
+        voiceCharacter: VoiceCharacterType,
+        voiceEmotion: VoiceEmotion,
+        pitch: Float = 1.0f,
+        speed: Float = 1.0f,
+        sampleRate: Int = ProceduralSoundSynthesizer.SAMPLE_RATE
+    ): Pair<ShortArray, Long> {
+        val cleanText = text.trim().ifEmpty { "হ্যালো" }
+        val effSpeed = (voiceCharacter.baseSpeed * voiceEmotion.speedMul * speed).coerceIn(0.50f, 2.10f)
+        val effPitchMul = (voiceEmotion.pitchMul * pitch).coerceIn(0.45f, 2.20f)
+        val f0Base = (voiceCharacter.fundamentalHz * effPitchMul).coerceIn(68f, 540f)
+        val isQuestion = cleanText.contains('?') || cleanText.contains('？')
+        val isExclaim = cleanText.contains('!')
+
+        val baseMsPerChar = if (containsBengaliScript(cleanText)) 82L else 68L
+        val estDurMs = ((cleanText.length * baseMsPerChar) / effSpeed).toLong().coerceIn(750L, 6500L)
+        val totalSamples = ((estDurMs * sampleRate) / 1000L).toInt().coerceAtLeast(1)
+
+        val syllableRateHz = when (voiceEmotion) {
+            VoiceEmotion.ACTION_RUN -> 6.8f * effSpeed
+            VoiceEmotion.EXCITED, VoiceEmotion.ANGRY -> 5.2f * effSpeed
+            VoiceEmotion.SAD -> 2.7f * effSpeed
+            else -> 4.1f * effSpeed
+        }
+
+        val phase = DoubleArray(1)
+        val synth = ShortArray(totalSamples) { i ->
+            val progress = i.toFloat() / totalSamples.coerceAtLeast(1)
+            val t = i / sampleRate.toFloat()
+
+            // Emotion pitch contour
+            val contourMul = when (voiceEmotion) {
+                VoiceEmotion.HAPPY, VoiceEmotion.EXCITED ->
+                    1.0f + 0.14f * sin(2.0 * Math.PI * 1.9 * t).toFloat()
+                VoiceEmotion.ANGRY ->
+                    1.06f - 0.12f * progress + 0.05f * sin(2.0 * Math.PI * 6.0 * t).toFloat()
+                VoiceEmotion.SAD ->
+                    1.02f - 0.22f * progress
+                VoiceEmotion.SCARED ->
+                    1.04f + 0.10f * sin(2.0 * Math.PI * 11.5 * t).toFloat()
+                VoiceEmotion.SURPRISED ->
+                    if (progress < 0.35f) 1.05f + 0.32f * (progress / 0.35f) else 1.25f - 0.15f * progress
+                VoiceEmotion.ACTION_RUN ->
+                    1.0f + 0.11f * abs(sin(2.0 * Math.PI * 3.6 * t)).toFloat()
+                VoiceEmotion.NORMAL ->
+                    1.0f + 0.06f * sin(2.0 * Math.PI * 2.0 * t).toFloat()
+            } + (if (isQuestion && progress > 0.7f) 0.22f * ((progress - 0.7f) / 0.3f) else 0f) +
+                (if (isExclaim && progress < 0.4f) 0.12f else 0f)
+
+            val vibrato = 1.0f + 0.028f * sin(2.0 * Math.PI * voiceEmotion.vibratoHz * t).toFloat()
+            val f0 = f0Base * contourMul * vibrato
+            phase[0] += (2.0 * Math.PI * f0) / sampleRate
+
+            // Articulated vowel/consonant envelope + breathing breaks for running motion
+            val rawSyl = abs(sin(2.0 * Math.PI * syllableRateHz * t)).toFloat()
+            val syllableEnv = if (voiceEmotion == VoiceEmotion.ACTION_RUN) {
+                val breathGate = if ((t * 2.8f).toInt() % 3 == 2) 0.35f else 1.0f
+                rawSyl * breathGate
+            } else {
+                rawSyl.coerceAtLeast(0.12f)
+            }
+
+            // Formant mixture distinguishing male/female/child/elder & angry harshness
+            val h1 = sin(phase[0]).toFloat() * 0.48f
+            val h2 = sin(phase[0] * 2.0).toFloat() * (if (voiceCharacter.isFemaleHint == true) 0.30f else 0.20f)
+            val h3 = sin(phase[0] * 3.0).toFloat() * (if (voiceEmotion == VoiceEmotion.ANGRY) 0.24f else 0.12f)
+            val fadeIn = (progress / 0.05f).coerceIn(0f, 1f)
+            val fadeOut = ((1f - progress) / 0.06f).coerceIn(0f, 1f)
+
+            val sample = (h1 + h2 + h3) * syllableEnv * voiceEmotion.energyScale * fadeIn * fadeOut
+            (sample.coerceIn(-0.98f, 0.98f) * 32767f).toInt().toShort()
+        }
+        return synth to estDurMs
+    }
+}
 
 class AudioEngine(private val context: Context) {
 
@@ -49,7 +132,9 @@ class AudioEngine(private val context: Context) {
             tts = TextToSpeech(context.applicationContext) { status ->
                 ttsReady = (status == TextToSpeech.SUCCESS)
                 if (ttsReady) {
-                    tts?.language = Locale.US
+                    val bnBd = Locale("bn", "BD")
+                    val res = tts?.isLanguageAvailable(bnBd) ?: TextToSpeech.LANG_NOT_SUPPORTED
+                    tts?.language = if (res >= TextToSpeech.LANG_AVAILABLE) bnBd else Locale.US
                 }
             }
         } catch (e: Exception) {
@@ -64,26 +149,120 @@ class AudioEngine(private val context: Context) {
         tts = null
     }
 
+    private fun configureTtsForVoice(
+        text: String,
+        voiceCharacter: VoiceCharacterType,
+        voiceEmotion: VoiceEmotion,
+        pitch: Float,
+        speed: Float
+    ): Pair<Float, Float> {
+        val effPitch = (voiceCharacter.basePitch * voiceEmotion.pitchMul * pitch).coerceIn(0.45f, 2.0f)
+        val effSpeed = (voiceCharacter.baseSpeed * voiceEmotion.speedMul * speed).coerceIn(0.50f, 2.0f)
+        val engine = tts ?: return effPitch to effSpeed
+
+        val preferredLocale = if (ProceduralVoice.containsBengaliScript(text)) {
+            val bnBd = Locale("bn", "BD")
+            val bnIn = Locale("bn", "IN")
+            when {
+                engine.isLanguageAvailable(bnBd) >= TextToSpeech.LANG_AVAILABLE -> bnBd
+                engine.isLanguageAvailable(bnIn) >= TextToSpeech.LANG_AVAILABLE -> bnIn
+                else -> Locale.US
+            }
+        } else {
+            Locale.US
+        }
+        runCatching {
+            engine.language = preferredLocale
+            val hintFemale = voiceCharacter.isFemaleHint
+            if (hintFemale != null) {
+                val matchingVoice = engine.voices?.firstOrNull { v ->
+                    v.locale.language == preferredLocale.language && !v.isNetworkConnectionRequired && (
+                        if (hintFemale) {
+                            v.name.contains("female", ignoreCase = true) ||
+                                v.name.contains("-f-", ignoreCase = true) ||
+                                v.name.contains("sfg", ignoreCase = true) ||
+                                v.name.contains("bnf", ignoreCase = true)
+                        } else {
+                            v.name.contains("male", ignoreCase = true) ||
+                                v.name.contains("-m-", ignoreCase = true) ||
+                                v.name.contains("iom", ignoreCase = true) ||
+                                v.name.contains("bnm", ignoreCase = true)
+                        }
+                    )
+                }
+                if (matchingVoice != null) {
+                    engine.voice = matchingVoice
+                }
+            }
+            engine.setPitch(effPitch)
+            engine.setSpeechRate(effSpeed)
+        }
+        return effPitch to effSpeed
+    }
+
+    fun previewCustomVoice(
+        text: String,
+        voiceCharacter: VoiceCharacterType,
+        voiceEmotion: VoiceEmotion,
+        pitch: Float = 1.0f,
+        speed: Float = 1.0f
+    ) {
+        stopPlayback()
+        val cleanText = text.trim().ifEmpty { "নমস্কার, টুনমোশন স্টুডিওতে স্বাগতম!" }
+        val isBn = ProceduralVoice.containsBengaliScript(cleanText)
+        val engine = tts
+        val canUseTts = ttsReady && engine != null && (
+            !isBn ||
+                engine.isLanguageAvailable(Locale("bn", "BD")) >= TextToSpeech.LANG_AVAILABLE ||
+                engine.isLanguageAvailable(Locale("bn", "IN")) >= TextToSpeech.LANG_AVAILABLE
+            )
+
+        if (canUseTts) {
+            configureTtsForVoice(cleanText, voiceCharacter, voiceEmotion, pitch, speed)
+            engine?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "preview_${UUID.randomUUID()}")
+        } else {
+            Thread {
+                val (samples, _) = ProceduralVoice.synthesizeVocalWaveform(
+                    text = cleanText,
+                    voiceCharacter = voiceCharacter,
+                    voiceEmotion = voiceEmotion,
+                    pitch = pitch,
+                    speed = speed
+                )
+                if (samples.isNotEmpty()) {
+                    playPcmSamples(samples)
+                }
+            }.start()
+        }
+    }
+
     /**
-     * Synthesizes offline character dialogue using Android's TextToSpeech into a real WAV file,
-     * returning an AudioClip with extracted waveform peaks for exact Lip Sync!
+     * Synthesizes character dialogue (supporting Male, Female, Child, Elder voices & Emotion/Motion sync)
+     * into a WAV file and returns an AudioClip with extracted waveform peaks for exact Lip Sync.
      */
     suspend fun synthesizeDialogueToClip(
         characterInstanceId: String,
         text: String,
         startTimeMs: Long,
         pitch: Float = 1.0f,
-        speed: Float = 1.0f
+        speed: Float = 1.0f,
+        voiceCharacter: VoiceCharacterType = VoiceCharacterType.MALE_ADULT,
+        voiceEmotion: VoiceEmotion = VoiceEmotion.NORMAL
     ): AudioClip = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, "audio").apply { mkdirs() }
         val outFile = File(dir, "tts_${UUID.randomUUID()}.wav")
-        val cleanText = text.trim().ifEmpty { "Hello!" }
+        val cleanText = text.trim().ifEmpty { "হ্যালো!" }
 
-        val ttsSuccess = if (ttsReady && tts != null) {
+        val (effPitch, _) = configureTtsForVoice(cleanText, voiceCharacter, voiceEmotion, pitch, speed)
+        val isBn = ProceduralVoice.containsBengaliScript(cleanText)
+        val hasBnPack = ttsReady && tts != null && (
+            (tts?.isLanguageAvailable(Locale("bn", "BD")) ?: TextToSpeech.LANG_NOT_SUPPORTED) >= TextToSpeech.LANG_AVAILABLE ||
+                (tts?.isLanguageAvailable(Locale("bn", "IN")) ?: TextToSpeech.LANG_NOT_SUPPORTED) >= TextToSpeech.LANG_AVAILABLE
+            )
+
+        val ttsSuccess = if (ttsReady && tts != null && (!isBn || hasBnPack)) {
             suspendCancellableCoroutine { cont ->
                 val uttId = UUID.randomUUID().toString()
-                tts?.setPitch(pitch.coerceIn(0.5f, 1.8f))
-                tts?.setSpeechRate(speed.coerceIn(0.5f, 1.8f))
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
                     override fun onDone(utteranceId: String?) {
@@ -104,8 +283,9 @@ class AudioEngine(private val context: Context) {
             }
         } else false
 
+        val clipTitle = "${voiceCharacter.label.substringBefore(" ")} (${voiceEmotion.label}): ${cleanText.take(16)}"
+
         if (ttsSuccess && outFile.exists() && outFile.length() > 44L) {
-            // Resample/normalize to 44.1kHz mono WAV if needed or read samples directly
             val samples = decodeUriToMono44kSamples(Uri.fromFile(outFile))
             if (samples.isNotEmpty()) {
                 ProceduralSoundSynthesizer.writeWavFile(outFile, samples)
@@ -113,7 +293,7 @@ class AudioEngine(private val context: Context) {
                 val peaks = ProceduralSoundSynthesizer.extractWaveformPeaks(samples, 64)
                 return@withContext AudioClip(
                     id = UUID.randomUUID().toString(),
-                    title = "Voice: ${cleanText.take(20)}",
+                    title = clipTitle,
                     trackType = AudioTrackType.DIALOGUE,
                     sourceType = AudioSourceType.TTS_OFFLINE,
                     filePath = outFile.absolutePath,
@@ -124,28 +304,26 @@ class AudioEngine(private val context: Context) {
                     originalDurationMs = durMs,
                     volume = 0.92f,
                     playbackSpeed = 1.0f,
-                    pitch = pitch,
+                    pitch = effPitch,
                     waveformPeaks = peaks,
-                    dialogueText = cleanText
+                    dialogueText = cleanText,
+                    voiceCharacter = voiceCharacter,
+                    voiceEmotion = voiceEmotion
                 )
             }
         }
 
-        // Fallback expressive formant vocal cadence WAV if device lacks TTS voice pack
-        val estDurMs = (cleanText.length * 65L).coerceIn(900L, 6000L)
-        val totalSamples = ((estDurMs * ProceduralSoundSynthesizer.SAMPLE_RATE) / 1000L).toInt()
-        val synth = ShortArray(totalSamples) { i ->
-            val t = i / ProceduralSoundSynthesizer.SAMPLE_RATE.toFloat()
-            val syl = kotlin.math.abs(kotlin.math.sin(2.0 * Math.PI * 3.8 * t)).toFloat()
-            val f0 = (165f * pitch) + kotlin.math.sin(2.0 * Math.PI * 2.1 * t).toFloat() * 25f
-            val wave = kotlin.math.sin(2.0 * Math.PI * f0 * t).toFloat() * 0.45f +
-                kotlin.math.sin(2.0 * Math.PI * f0 * 2.0 * t).toFloat() * 0.25f
-            (wave * syl * 0.7f * 32767f).toInt().toShort()
-        }
+        val (synth, estDurMs) = ProceduralVoice.synthesizeVocalWaveform(
+            text = cleanText,
+            voiceCharacter = voiceCharacter,
+            voiceEmotion = voiceEmotion,
+            pitch = pitch,
+            speed = speed
+        )
         ProceduralSoundSynthesizer.writeWavFile(outFile, synth)
         AudioClip(
             id = UUID.randomUUID().toString(),
-            title = "Dialogue: ${cleanText.take(20)}",
+            title = clipTitle,
             trackType = AudioTrackType.DIALOGUE,
             sourceType = AudioSourceType.TTS_OFFLINE,
             filePath = outFile.absolutePath,
@@ -155,9 +333,11 @@ class AudioEngine(private val context: Context) {
             trimEndMs = estDurMs,
             originalDurationMs = estDurMs,
             volume = 0.92f,
-            pitch = pitch,
+            pitch = effPitch,
             waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(synth, 64),
-            dialogueText = cleanText
+            dialogueText = cleanText,
+            voiceCharacter = voiceCharacter,
+            voiceEmotion = voiceEmotion
         )
     }
 
@@ -216,7 +396,7 @@ class AudioEngine(private val context: Context) {
         val durMs = ((samples.size * 1000L) / ProceduralSoundSynthesizer.SAMPLE_RATE).coerceAtLeast(300L)
         return AudioClip(
             id = UUID.randomUUID().toString(),
-            title = "Mic Voice ${file.nameWithoutExtension.takeLast(4)}",
+            title = "মাইক ভয়েস ${file.nameWithoutExtension.takeLast(4)}",
             trackType = AudioTrackType.VOICE,
             sourceType = AudioSourceType.RECORDED,
             filePath = file.absolutePath,
@@ -263,7 +443,7 @@ class AudioEngine(private val context: Context) {
         val durMs = ((samples.size * 1000L) / ProceduralSoundSynthesizer.SAMPLE_RATE).coerceAtLeast(300L)
         AudioClip(
             id = UUID.randomUUID().toString(),
-            title = title.ifBlank { "Imported Audio" },
+            title = title.ifBlank { "ইম্পোর্টেড অডিও" },
             trackType = trackType,
             sourceType = AudioSourceType.IMPORTED,
             filePath = file.absolutePath,
@@ -314,6 +494,10 @@ class AudioEngine(private val context: Context) {
     }
 
     fun stopPlayback() {
+        try {
+            tts?.stop()
+        } catch (_: Exception) {
+        }
         try {
             activeTrack?.pause()
             activeTrack?.flush()
@@ -522,7 +706,6 @@ class AudioEngine(private val context: Context) {
             val srcArr = monoOut.toShortArray()
             if (srcRate == ProceduralSoundSynthesizer.SAMPLE_RATE) return srcArr
 
-            // Linear resample to 44100 Hz
             val targetLen = ((srcArr.size.toLong() * ProceduralSoundSynthesizer.SAMPLE_RATE) / srcRate).toInt().coerceAtLeast(1)
             val ratio = srcRate.toFloat() / ProceduralSoundSynthesizer.SAMPLE_RATE.toFloat()
             ShortArray(targetLen) { i ->

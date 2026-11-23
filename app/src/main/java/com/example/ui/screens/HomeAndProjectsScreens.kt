@@ -3,7 +3,6 @@ package com.example.ui.screens
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +32,6 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SaveAs
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -64,7 +62,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
@@ -95,7 +92,7 @@ fun HomeScreen(
     onGenerateAiScene: (String) -> Unit
 ) {
     var aiPrompt by remember {
-        mutableStateOf("Two friends are walking in a park. One friend waves. The other stops and looks at him. They talk for a few seconds and then laugh together.")
+        mutableStateOf("দুই বন্ধু পার্কে হাঁটছে। একজন হাত নেড়ে ডাকছে। আরেকজন থেমে তার দিকে তাকায়। তারা কিছুক্ষণ কথা বলে একসাথে হাসে।")
     }
     var showNewDialog by remember { mutableStateOf(false) }
 
@@ -115,7 +112,7 @@ fun HomeScreen(
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.img_studio_hero),
-                    contentDescription = "ToonMotion Studio Workspace Hero",
+                    contentDescription = "টুনমোশন স্টুডিও হিরো ব্যানার",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
@@ -134,12 +131,12 @@ fun HomeScreen(
                         .padding(16.dp)
                 ) {
                     Text(
-                        text = "TOONMOTION STUDIO",
+                        text = "টুনমোশন স্টুডিও",
                         style = MaterialTheme.typography.labelSmall,
                         color = StudioCyan
                     )
                     Text(
-                        text = "2D Cartoon Animation Production",
+                        text = "২ডি কার্টুন অ্যানিমেশন স্টুডিও",
                         style = MaterialTheme.typography.headlineSmall,
                         color = Color.White
                     )
@@ -152,7 +149,7 @@ fun HomeScreen(
                         ) {
                             Icon(Icons.Default.PlayCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Open Studio")
+                            Text("স্টুডিও খুলুন")
                         }
                         FilledTonalButton(
                             onClick = { showNewDialog = true },
@@ -160,7 +157,7 @@ fun HomeScreen(
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("New Project")
+                            Text("নতুন প্রজেক্ট")
                         }
                     }
                 }
@@ -169,31 +166,31 @@ fun HomeScreen(
 
         // Quick Studio Modules Row
         item {
-            Text("Studio Workspaces", style = MaterialTheme.typography.titleMedium)
+            Text("স্টুডিও ওয়ার্কস্পেস", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 QuickActionTile(
-                    title = "Character",
-                    subtitle = "Face, Hair & Rig",
+                    title = "ক্যারেক্টার",
+                    subtitle = "মুখ, চুল ও রিগিং",
                     icon = Icons.Default.PersonAdd,
                     accent = StudioAmber,
                     onClick = { onNavigate(StudioDestination.CHARACTER_STUDIO) },
                     modifier = Modifier.weight(1f)
                 )
                 QuickActionTile(
-                    title = "Timeline",
-                    subtitle = "12 Tracks & Keys",
+                    title = "টাইমলাইন",
+                    subtitle = "১২টি লেয়ার ও কিফ্রেম",
                     icon = Icons.Default.MovieCreation,
                     accent = StudioCyan,
                     onClick = { onNavigate(StudioDestination.TIMELINE_EDITOR) },
                     modifier = Modifier.weight(1f)
                 )
                 QuickActionTile(
-                    title = "Export MP4",
-                    subtitle = "480p - 1080p",
+                    title = "ভিডিও এক্সপোর্ট",
+                    subtitle = "৪৮০p - ১০৮০p MP4",
                     icon = Icons.Default.VideoFile,
                     accent = StudioMint,
                     onClick = { onNavigate(StudioDestination.EXPORT_STUDIO) },
@@ -212,7 +209,7 @@ fun HomeScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = StudioViolet)
                         Spacer(Modifier.width(8.dp))
-                        Text("AI Script-to-Animation Generator", style = MaterialTheme.typography.titleMedium)
+                        Text("গল্প থেকে অটো-দৃশ্য তৈরি", style = MaterialTheme.typography.titleMedium)
                     }
                     Surface(
                         color = StudioAmber.copy(alpha = 0.14f),
@@ -222,7 +219,7 @@ fun HomeScreen(
                             Icon(Icons.Default.Info, contentDescription = null, tint = StudioAmber, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                text = "Cloud Gemini AI requires Firebase setup (declined). Generates editable offline rule-based sample animations.",
+                                text = "ক্লাউড Gemini AI-এর জন্য Firebase সেটআপ প্রয়োজন (বাতিল)। অফলাইন স্মার্ট নিয়মে এডিটযোগ্য নমুনা দৃশ্য তৈরি হবে।",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -231,7 +228,7 @@ fun HomeScreen(
                     OutlinedTextField(
                         value = aiPrompt,
                         onValueChange = { aiPrompt = it },
-                        label = { Text("Describe your scene & character actions") },
+                        label = { Text("আপনার দৃশ্য ও চরিত্রের কাজ লিখুন") },
                         minLines = 2,
                         maxLines = 4,
                         modifier = Modifier
@@ -240,9 +237,9 @@ fun HomeScreen(
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         val samples = listOf(
-                            "Two friends walking in a park waving and laughing",
-                            "Hero dancing in night city under spotlight",
-                            "Character eating a snack in the kitchen"
+                            "দুই বন্ধু পার্কে হাঁটছে, হাত নাড়ছে এবং হাসছে",
+                            "রাতের শহরে স্পটলাইটের নিচে নাচছে হিরো",
+                            "রান্নাঘরে বসে খাবার খাচ্ছে চরিত্র"
                         )
                         items(samples) { sample ->
                             SuggestionChip(
@@ -256,7 +253,7 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Outputs editable scenes, clips & cameras", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("এডিটযোগ্য দৃশ্য, ক্লিপ ও ক্যামেরা তৈরি হবে", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Button(
                             onClick = { onGenerateAiScene(aiPrompt) },
                             enabled = aiState !is AiGeneratorUiState.Generating && aiPrompt.isNotBlank(),
@@ -267,7 +264,7 @@ fun HomeScreen(
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
                                 Spacer(Modifier.width(6.dp))
                             }
-                            Text("Generate Scene")
+                            Text("দৃশ্য তৈরি করুন")
                         }
                     }
                     if (aiState is AiGeneratorUiState.Ready) {
@@ -284,9 +281,9 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Recent Projects", style = MaterialTheme.typography.titleMedium)
+                Text("সাম্প্রতিক প্রজেক্টসমূহ", style = MaterialTheme.typography.titleMedium)
                 TextButton(onClick = { onNavigate(StudioDestination.PROJECTS) }) {
-                    Text("Manage All")
+                    Text("সব দেখুন")
                 }
             }
             Spacer(Modifier.height(6.dp))
@@ -319,7 +316,7 @@ fun HomeScreen(
                                 Text("${proj.fps} FPS", style = MaterialTheme.typography.labelSmall, color = StudioCyan)
                             }
                             Text(
-                                text = "${proj.scenes.size} scene(s) • ${proj.activeScene?.characters?.size ?: 0} cast • ${proj.activeScene?.background?.label ?: ""}",
+                                text = "${proj.scenes.size}টি দৃশ্য • ${proj.activeScene?.characters?.size ?: 0} চরিত্র • ${proj.activeScene?.background?.label ?: ""}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1
@@ -383,7 +380,7 @@ fun ProjectsScreen(
     var showNewDialog by remember { mutableStateOf(false) }
     var showSaveAsDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<AnimationProject?>(null) }
-    val dateFmt = remember { SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()) }
+    val dateFmt = remember { SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -397,8 +394,8 @@ fun ProjectsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Project Manager", style = MaterialTheme.typography.headlineSmall)
-                    Text("Autosave active • Local SQLite storage", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("প্রজেক্ট ম্যানেজার", style = MaterialTheme.typography.headlineSmall)
+                    Text("অটোসেভ চালু আছে • লোকাল স্টোরেজ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Button(
                     onClick = { showNewDialog = true },
@@ -406,7 +403,7 @@ fun ProjectsScreen(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
-                    Text("New")
+                    Text("নতুন")
                 }
             }
         }
@@ -418,20 +415,20 @@ fun ProjectsScreen(
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Active Project: ${activeProject.name}", style = MaterialTheme.typography.titleMedium, color = StudioCyan)
+                        Text("সক্রিয় প্রজেক্ট: ${activeProject.name}", style = MaterialTheme.typography.titleMedium, color = StudioCyan)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilledTonalButton(onClick = onSaveProject) {
                                 Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Save")
+                                Text("সংরক্ষণ")
                             }
                             OutlinedButton(onClick = { showSaveAsDialog = true }) {
                                 Icon(Icons.Default.SaveAs, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Save As")
+                                Text("নতুন নামে সেভ")
                             }
                         }
-                        Text("Project FPS & Aspect Ratio", style = MaterialTheme.typography.labelMedium)
+                        Text("প্রজেক্ট FPS ও স্ক্রিনের মাপ", style = MaterialTheme.typography.labelMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(24, 25, 30, 60).forEach { fps ->
                                 SuggestionChip(
@@ -454,7 +451,7 @@ fun ProjectsScreen(
         }
 
         item {
-            Text("All Saved Projects (${projects.size})", style = MaterialTheme.typography.titleMedium)
+            Text("সব সংরক্ষিত প্রজেক্ট (${projects.size}টি)", style = MaterialTheme.typography.titleMedium)
         }
 
         items(projects, key = { it.id }) { proj ->
@@ -476,24 +473,24 @@ fun ProjectsScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(proj.name, style = MaterialTheme.typography.titleSmall)
                         Text(
-                            text = "${proj.scenes.size} scenes • ${proj.fps} FPS • Updated ${dateFmt.format(Date(proj.updatedAtMs))}",
+                            text = "${proj.scenes.size} দৃশ্য • ${proj.fps} FPS • আপডেট ${dateFmt.format(Date(proj.updatedAtMs))}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Row {
                         IconButton(onClick = { onOpenProject(proj) }) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = "Open project", tint = StudioCyan)
+                            Icon(Icons.Default.FolderOpen, contentDescription = "প্রজেক্ট খুলুন", tint = StudioCyan)
                         }
                         IconButton(onClick = { renameTarget = proj }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Rename project")
+                            Icon(Icons.Default.Edit, contentDescription = "নাম পরিবর্তন")
                         }
                         IconButton(onClick = { onDuplicateProject(proj) }) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = "Duplicate project")
+                            Icon(Icons.Default.ContentCopy, contentDescription = "প্রজেক্ট কপি")
                         }
                         if (projects.size > 1) {
                             IconButton(onClick = { onDeleteProject(proj.id) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete project", tint = StudioCoral)
+                                Icon(Icons.Default.Delete, contentDescription = "প্রজেক্ট মুছুন", tint = StudioCoral)
                             }
                         }
                     }
@@ -503,7 +500,7 @@ fun ProjectsScreen(
 
         if (sceneTemplates.isNotEmpty()) {
             item {
-                Text("Saved Scene Templates", style = MaterialTheme.typography.titleMedium)
+                Text("সংরক্ষিত দৃশ্য টেমপ্লেট", style = MaterialTheme.typography.titleMedium)
             }
             items(sceneTemplates, key = { it.id }) { tmpl ->
                 Card(
@@ -519,9 +516,9 @@ fun ProjectsScreen(
                     ) {
                         Column {
                             Text(tmpl.name, style = MaterialTheme.typography.titleSmall)
-                            Text("${tmpl.background.label} • ${tmpl.characters.size} characters", style = MaterialTheme.typography.bodySmall)
+                            Text("${tmpl.background.label} • ${tmpl.characters.size} চরিত্র", style = MaterialTheme.typography.bodySmall)
                         }
-                        Text("Use Template", style = MaterialTheme.typography.labelMedium, color = StudioCyan)
+                        Text("ব্যবহার করুন", style = MaterialTheme.typography.labelMedium, color = StudioCyan)
                     }
                 }
             }
@@ -539,8 +536,8 @@ fun ProjectsScreen(
     }
     if (showSaveAsDialog) {
         NamePromptDialog(
-            title = "Save Project As",
-            initialName = "${activeProject?.name ?: "Project"} v2",
+            title = "নতুন নামে প্রজেক্ট সেভ",
+            initialName = "${activeProject?.name ?: "প্রজেক্ট"} ২",
             onDismiss = { showSaveAsDialog = false },
             onConfirm = { name ->
                 showSaveAsDialog = false
@@ -550,7 +547,7 @@ fun ProjectsScreen(
     }
     renameTarget?.let { target ->
         NamePromptDialog(
-            title = "Rename Project",
+            title = "প্রজেক্টের নাম বদলান",
             initialName = target.name,
             onDismiss = { renameTarget = null },
             onConfirm = { newName ->
@@ -566,21 +563,21 @@ private fun NewProjectDialog(
     onDismiss: () -> Unit,
     onCreate: (String, SceneBackground) -> Unit
 ) {
-    var name by remember { mutableStateOf("My Cartoon Episode") }
+    var name by remember { mutableStateOf("আমার কার্টুন গল্প") }
     var bg by remember { mutableStateOf(SceneBackground.PARK) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create Animation Project") },
+        title = { Text("নতুন অ্যানিমেশন প্রজেক্ট") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Project Title") },
+                    label = { Text("প্রজেক্টের নাম") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text("Starting Scene Background", style = MaterialTheme.typography.labelMedium)
+                Text("শুরুর ব্যাকগ্রাউন্ড বেছে নিন", style = MaterialTheme.typography.labelMedium)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(SceneBackground.entries.filter { it != SceneBackground.CUSTOM_IMAGE }) { item ->
                         Surface(
@@ -600,10 +597,10 @@ private fun NewProjectDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onCreate(name, bg) }) { Text("Create") }
+            Button(onClick = { onCreate(name, bg) }) { Text("ওকে • তৈরি করুন") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("বাতিল") }
         }
     )
 }
@@ -627,7 +624,7 @@ fun NamePromptDialog(
                 modifier = Modifier.fillMaxWidth()
             )
         },
-        confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = { Button(onClick = { onConfirm(text) }) { Text("ওকে • সংরক্ষণ") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } }
     )
 }
