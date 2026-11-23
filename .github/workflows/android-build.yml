@@ -59,19 +59,33 @@ jobs:
       - name: Prepare environment & debug keystore
         run: |
           chmod +x gradlew
-          if [ ! -f .env ] && [ -f .env.example ]; then
-            cp .env.example .env
+          if [ ! -f .env ]; then
+            if [ -f .env.example ]; then
+              cp .env.example .env
+            else
+              touch .env
+            fi
           fi
-          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
+          if [ ! -f debug.keystore ]; then
+            if [ -f debug.keystore.base64 ]; then
+              base64 -d debug.keystore.base64 > debug.keystore
+            else
+              keytool -genkeypair -v \
+                -keystore debug.keystore \
+                -keyalg RSA -keysize 2048 -validity 10000 \
+                -alias androiddebugkey \
+                -storepass android \
+                -keypass android \
+                -dname "CN=Android Debug,O=Android,C=US"
+            fi
           fi
 
       - name: Run unit tests
-        run: ./gradlew :app:testDebugUnitTest --tests "com.example.ExampleUnitTest" -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" --stacktrace
+        run: ./gradlew :app:testDebugUnitTest --tests "com.example.ExampleUnitTest" -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Dorg.gradle.workers.max=2 --stacktrace
 
       - name: Build Debug APK
         if: ${{ github.event.inputs.build_type != 'release' }}
-        run: ./gradlew :app:assembleDebug -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" --stacktrace
+        run: ./gradlew :app:assembleDebug -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Dorg.gradle.workers.max=2 --stacktrace
 
       - name: Upload Debug APK
         if: ${{ github.event.inputs.build_type != 'release' }}
@@ -108,7 +122,7 @@ jobs:
 
       - name: Build Release APK & AAB
         if: ${{ github.event.inputs.build_type != 'debug' }}
-        run: ./gradlew :app:assembleRelease :app:bundleRelease -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" --stacktrace
+        run: ./gradlew :app:assembleRelease :app:bundleRelease -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" -Dorg.gradle.workers.max=2 --stacktrace
 
       - name: Upload Release APK
         if: ${{ github.event.inputs.build_type != 'debug' }}
