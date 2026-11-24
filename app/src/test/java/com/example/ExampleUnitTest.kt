@@ -341,6 +341,78 @@ class ExampleUnitTest {
         assertTrue(peaks.size >= 16)
         assertTrue(peaks.max() > 0.5f)
     }
+
+    @Test
+    fun `voice effect DSP transforms recorded PCM for male female child and echo filters`() {
+        val sampleRate = 22050
+        val input = ShortArray(sampleRate) { i ->
+            (kotlin.math.sin(2.0 * Math.PI * 180.0 * i / sampleRate) * 12000.0).toInt().toShort()
+        }
+        val male = com.example.engine.ProceduralVoice.applyVoiceEffectDsp(
+            input, sampleRate, com.example.domain.model.VoiceEffectFilter.MALE_DEEP
+        )
+        val child = com.example.engine.ProceduralVoice.applyVoiceEffectDsp(
+            input, sampleRate, com.example.domain.model.VoiceEffectFilter.CHILD_CUTE
+        )
+        val echo = com.example.engine.ProceduralVoice.applyVoiceEffectDsp(
+            input, sampleRate, com.example.domain.model.VoiceEffectFilter.ECHO_HALL
+        )
+
+        assertTrue(male.isNotEmpty())
+        assertTrue(child.isNotEmpty())
+        assertTrue(echo.isNotEmpty())
+        assertTrue(male.any { it != 0.toShort() })
+        assertTrue(child.any { it != 0.toShort() })
+        // Child voice speed > 1.0 produces shorter output than slower Male deep voice
+        assertTrue(child.size < male.size)
+        // Echo hall is slightly slower/longer and modifies waveform
+        assertNotEquals(input.take(500), echo.take(500))
+    }
+
+    @Test
+    fun `human realistic automations attach phone tea cup and moving rickshaw to driver`() {
+        val charInst = SceneCharacterInstance(
+            id = "driver_1",
+            characterId = "char_rickshaw_karim",
+            name = "করিম ভাই",
+            x = 0.25f,
+            y = 0.77f
+        )
+        val baseScene = StudioScene(id = "s_bd", name = "BD Village", durationMs = 6000L, characters = listOf(charInst))
+
+        val phoneScene = AutomationEngine.applyPhoneCallAutomation(baseScene, "driver_1", 0L, 2500L)
+        val evalPhone = AnimationEvaluator.evaluateScene(phoneScene, 1200L)
+        assertEquals(1, evalPhone.props.size)
+        assertEquals(com.example.domain.model.PropType.PHONE, evalPhone.props.first().prop.type)
+        // Phone should sit elevated near ear/head rather than on the ground
+        assertTrue(evalPhone.props.first().y < evalPhone.characters.first().y - 0.10f)
+
+        val teaScene = AutomationEngine.applyTeaDrinkAutomation(baseScene, "driver_1", 0L, 2200L)
+        assertEquals(com.example.domain.model.PropType.TEA_CUP, teaScene.props.first().type)
+
+        val rickshawScene = AutomationEngine.applyDriveVehicleAutomation(
+            scene = baseScene,
+            characterInstanceId = "driver_1",
+            isRickshaw = true,
+            startTimeMs = 0L,
+            durationMs = 3000L,
+            direction = 1
+        )
+        val evalStart = AnimationEvaluator.evaluateScene(rickshawScene, 100L)
+        val evalEnd = AnimationEvaluator.evaluateScene(rickshawScene, 2800L)
+        assertTrue(evalEnd.characters.first().x > evalStart.characters.first().x)
+        assertTrue(evalEnd.props.first().x > evalStart.props.first().x)
+    }
+
+    @Test
+    fun `bangladeshi characters and scenes are available in library and background catalog`() {
+        val library = ProjectRepository.defaultCharacterLibrary()
+        assertTrue(library.any { it.id == "char_farmer_rahim" })
+        assertTrue(library.any { it.id == "char_rickshaw_karim" })
+        assertTrue(library.any { it.id == "char_tea_mamun" })
+        val bdBgs = com.example.domain.model.SceneBackground.entries.filter { it.category == "বাংলাদেশ" }
+        assertTrue(bdBgs.size >= 6)
+    }
 }
 
 

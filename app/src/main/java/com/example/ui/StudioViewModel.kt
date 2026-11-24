@@ -49,6 +49,7 @@ import com.example.domain.model.StudioScene
 import com.example.domain.model.StudioSettings
 import com.example.domain.model.TimelineTrackKind
 import com.example.domain.model.VoiceCharacterType
+import com.example.domain.model.VoiceEffectFilter
 import com.example.domain.model.VoiceEmotion
 import com.example.domain.model.WeatherType
 import com.example.engine.AnimationEvaluator
@@ -56,6 +57,7 @@ import com.example.engine.AudioEngine
 import com.example.engine.AutomationEngine
 import com.example.engine.ExportResult
 import com.example.engine.ProceduralSoundSynthesizer
+import com.example.engine.ProceduralVoice
 import com.example.engine.RigSolver
 import com.example.engine.SoundLibraryCatalog
 import com.example.engine.VideoExportEngine
@@ -842,6 +844,24 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun addCharacterToActiveScene(character: CartoonCharacter) {
         val scene = _activeProject.value?.activeScene ?: return
         val offsetIdx = scene.characters.size
+        val needsClone = character.isTemplate || scene.characters.any { it.characterId == character.id }
+        val baseLabel = character.name.substringBefore(" (").ifBlank { character.name }
+        val existingSameNameCount = scene.characters.count { it.name.startsWith(baseLabel) }
+        val instanceLabel = if (existingSameNameCount > 0) "$baseLabel ${existingSameNameCount + 1}" else baseLabel
+
+        val resolvedCharacter = if (needsClone) {
+            val cloned = character.copy(
+                id = UUID.randomUUID().toString(),
+                name = instanceLabel,
+                isTemplate = false
+            )
+            _customCharacterBitmaps.value[character.id]?.let { bmp ->
+                _customCharacterBitmaps.value = _customCharacterBitmaps.value + (cloned.id to bmp)
+            }
+            viewModelScope.launch { projectRepo.saveCharacter(cloned) }
+            cloned
+        } else character
+
         val start = if (scene.characters.isEmpty()) 0L else _playheadMs.value.coerceIn(0L, (scene.durationMs - 500L).coerceAtLeast(0L))
         val end = if (scene.characters.isEmpty()) scene.durationMs else (start + 4000L).coerceAtMost(scene.durationMs)
         val freeRow = findFreeRow(
@@ -851,8 +871,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         )
         val inst = SceneCharacterInstance(
             id = UUID.randomUUID().toString(),
-            characterId = character.id,
-            name = character.name.substringBefore(" ("),
+            characterId = resolvedCharacter.id,
+            name = instanceLabel,
             x = (0.25f + (offsetIdx * 0.16f)).coerceIn(0.15f, 0.85f),
             y = 0.77f,
             facingRight = offsetIdx % 2 == 0,
@@ -863,8 +883,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         )
         updateActiveScene { s -> s.copy(characters = s.characters + inst) }
         _selectedCharInstanceId.value = inst.id
+        _editingCharacter.value = resolvedCharacter
         _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.CHARACTER, inst.id)
-        showNotice("ক্যারেক্টার লেয়ারে ${inst.name} যোগ করা হয়েছে")
+        showNotice("স্বতন্ত্র ক্যারেক্টার \"${inst.name}\" ও তার নিজস্ব লেয়ার যোগ হয়েছে")
     }
 
     fun removeCharacterFromScene(instanceId: String) {
@@ -1224,31 +1245,41 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val totalDur = durationMs * repeatCount.coerceAtLeast(1)
 
         updateActiveScene { s ->
-            var updated = if ((preset == MotionPreset.WALK || preset == MotionPreset.WALK_TOWARD || preset == MotionPreset.WALK_AWAY) && autoFootsteps) {
-                AutomationEngine.applyWalkAutomation(s, charId, start, totalDur, speed, direction, true, preset = preset)
-            } else if (preset == MotionPreset.EAT) {
-                AutomationEngine.applyEatAutomation(s, charId, start)
-            } else {
-                val freeRow = findFreeRow(
-                    existing = s.motionClips.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs) },
-                    startMs = start,
-                    endMs = start + totalDur
-                )
-                val clip = MotionClip(
-                    id = UUID.randomUUID().toString(),
-                    characterInstanceId = charId,
-                    preset = preset,
-                    startTimeMs = start,
-                    endTimeMs = start + totalDur,
-                    speed = speed,
-                    intensity = intensity,
-                    direction = direction,
-                    repeatCount = repeatCount,
-                    autoFootsteps = autoFootsteps,
-                    trackRow = freeRow
-                )
-                _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.BODY_MOTION, clip.id)
-                s.copy(motionClips = s.motionClips + clip)
+            var updated = when {
+                (preset == MotionPreset.WALK || preset == MotionPreset.WALK_TOWARD || preset == MotionPreset.WALK_AWAY) && autoFootsteps ->
+                    AutomationEngine.applyWalkAutomation(s, charId, start, totalDur, speed, direction, true, preset = preset)
+                preset == MotionPreset.EAT ->
+                    AutomationEngine.applyEatAutomation(s, charId, start)
+                preset == MotionPreset.DRINK ->
+                    AutomationEngine.applyTeaDrinkAutomation(s, charId, start, totalDur)
+                preset == MotionPreset.TALK_ON_PHONE ->
+                    AutomationEngine.applyPhoneCallAutomation(s, charId, start, totalDur)
+                preset == MotionPreset.DRIVE_CAR ->
+                    AutomationEngine.applyDriveVehicleAutomation(s, charId, isRickshaw = false, startTimeMs = start, durationMs = totalDur, direction = direction)
+                preset == MotionPreset.RIDE_RICKSHAW ->
+                    AutomationEngine.applyDriveVehicleAutomation(s, charId, isRickshaw = true, startTimeMs = start, durationMs = totalDur, direction = direction)
+                else -> {
+                    val freeRow = findFreeRow(
+                        existing = s.motionClips.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs) },
+                        startMs = start,
+                        endMs = start + totalDur
+                    )
+                    val clip = MotionClip(
+                        id = UUID.randomUUID().toString(),
+                        characterInstanceId = charId,
+                        preset = preset,
+                        startTimeMs = start,
+                        endTimeMs = start + totalDur,
+                        speed = speed,
+                        intensity = intensity,
+                        direction = direction,
+                        repeatCount = repeatCount,
+                        autoFootsteps = autoFootsteps,
+                        trackRow = freeRow
+                    )
+                    _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.BODY_MOTION, clip.id)
+                    s.copy(motionClips = s.motionClips + clip)
+                }
             }
             if (start + totalDur > updated.durationMs) {
                 updated = updated.copy(durationMs = (start + totalDur + 500L).coerceAtMost(60_000L))
@@ -1694,6 +1725,25 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         audioEngine.previewCustomVoice(text, voiceCharacter, voiceEmotion, pitch, speed)
     }
 
+    fun isBengaliTtsAvailable(): Boolean = audioEngine.isBengaliTtsAvailable()
+
+    fun applyVoiceEffectToClip(
+        clipId: String,
+        effect: VoiceEffectFilter,
+        customPitch: Float = 1.0f,
+        customSpeed: Float = 1.0f
+    ) {
+        val clip = _activeProject.value?.activeScene?.audioClips?.find { it.id == clipId } ?: return
+        viewModelScope.launch {
+            val updated = audioEngine.applyVoiceEffectToClip(clip, effect, customPitch, customSpeed)
+            updateActiveScene { s ->
+                s.copy(audioClips = s.audioClips.map { if (it.id == clipId) updated else it })
+            }
+            audioEngine.playPreviewClip(updated)
+            showNotice("ভয়েস এফেক্ট প্রয়োগ হয়েছে: ${effect.label}")
+        }
+    }
+
     fun generateDialogueClip(
         text: String,
         pitch: Float = 1.0f,
@@ -1705,6 +1755,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         val charId = _selectedCharInstanceId.value ?: _activeProject.value?.activeScene?.characters?.firstOrNull()?.id ?: return
         val start = _playheadMs.value
+        val needsMicHint = ProceduralVoice.containsBengaliScript(text) && !audioEngine.isBengaliTtsAvailable()
         viewModelScope.launch {
             val rawClip = audioEngine.synthesizeDialogueToClip(
                 characterInstanceId = charId,
@@ -1769,7 +1820,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             _selectedAudioClipId.value = clip.id
             _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.AUDIO, clip.id)
             audioEngine.playPreviewClip(clip)
-            showNotice("${voiceCharacter.label.substringBefore(" ")} (${voiceEmotion.label}) ভয়েস ও লিপ-সিঙ্ক যুক্ত হয়েছে")
+            if (needsMicHint) {
+                showNotice("লিপ-সিঙ্ক যুক্ত হয়েছে। আসল বাংলা কণ্ঠের জন্য 'মাইক রেকর্ড + ফ্রি ভয়েস এফেক্ট' ব্যবহার করুন!")
+            } else {
+                showNotice("${voiceCharacter.label.substringBefore(" ")} (${voiceEmotion.label}) ভয়েস ও লিপ-সিঙ্ক যুক্ত হয়েছে")
+            }
         }
     }
 
@@ -2112,10 +2167,23 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectTimelineClip(selection: TimelineClipSelection?) {
         _selectedTimelineClip.value = selection
+        val scene = _activeProject.value?.activeScene
         when (selection?.category) {
-            TimelineClipCategory.CHARACTER -> _selectedCharInstanceId.value = selection.id
+            TimelineClipCategory.CHARACTER -> selectCharacterInstance(selection.id)
+            TimelineClipCategory.BODY_MOTION -> {
+                val ownerId = scene?.motionClips?.find { it.id == selection.id }?.characterInstanceId
+                if (ownerId != null) selectCharacterInstance(ownerId)
+            }
+            TimelineClipCategory.FACE_EXPR -> {
+                val ownerId = scene?.faceClips?.find { it.id == selection.id }?.characterInstanceId
+                if (ownerId != null) selectCharacterInstance(ownerId)
+            }
             TimelineClipCategory.PROP -> selectProp(selection.id)
-            TimelineClipCategory.AUDIO -> _selectedAudioClipId.value = selection.id
+            TimelineClipCategory.AUDIO -> {
+                _selectedAudioClipId.value = selection.id
+                val ownerId = scene?.audioClips?.find { it.id == selection.id }?.characterInstanceId
+                if (ownerId != null) selectCharacterInstance(ownerId)
+            }
             else -> Unit
         }
     }

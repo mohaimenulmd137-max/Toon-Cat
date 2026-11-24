@@ -264,6 +264,41 @@ fun AnimationStudioPanel(
                                             }
                                         }
                                     }
+                                    Text("মানুষের বাস্তব অ্যাকশন (প্রপসসহ — ১ ক্লিকে যোগ)", style = MaterialTheme.typography.labelMedium, color = StudioAmber)
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items(
+                                            listOf(
+                                                MotionPreset.TALK_ON_PHONE to "মোবাইলে কথা",
+                                                MotionPreset.DRINK to "চা পান",
+                                                MotionPreset.EAT to "ভাত খাওয়া",
+                                                MotionPreset.DRIVE_CAR to "গাড়ি চালানো",
+                                                MotionPreset.RIDE_RICKSHAW to "রিকশা চালানো",
+                                                MotionPreset.WORK_TYPING to "কাজ / পড়াশোনা"
+                                            )
+                                        ) { (preset, title) ->
+                                            Button(
+                                                onClick = {
+                                                    onAddMotionClip(
+                                                        preset,
+                                                        preset.defaultDurationMs,
+                                                        speed,
+                                                        intensity,
+                                                        if (dirRight) 1 else -1,
+                                                        repeatCount,
+                                                        autoFootsteps
+                                                    )
+                                                },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = StudioAmber.copy(alpha = 0.22f),
+                                                    contentColor = StudioAmber
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                modifier = Modifier.testTag("human_action_${preset.name}")
+                                            ) {
+                                                Text(title, style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
@@ -667,12 +702,14 @@ fun SceneStudioPanel(
         }
 
         item {
+            var bgCategory by remember { mutableStateOf("বাংলাদেশ") }
+            val bgCategories = listOf("বাংলাদেশ", "সব", "ঘরোয়া", "বাইরে", "শহর", "যাতায়াত", "প্রকৃতি", "পরিবেশ")
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("২৩টি রেডিমেড ব্যাকগ্রাউন্ড", style = MaterialTheme.typography.titleSmall)
+                Text("${SceneBackground.entries.size - 1}টি দৃশ্যের ব্যাকগ্রাউন্ড", style = MaterialTheme.typography.titleSmall)
                 Button(
                     onClick = {
                         photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -685,8 +722,23 @@ fun SceneStudioPanel(
                 }
             }
             Spacer(Modifier.height(6.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(bgCategories) { cat ->
+                    FilterChip(
+                        selected = bgCategory == cat,
+                        onClick = { bgCategory = cat },
+                        label = { Text(cat, style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            val filteredBgs = remember(bgCategory) {
+                SceneBackground.entries.filter {
+                    it != SceneBackground.CUSTOM_IMAGE && (bgCategory == "সব" || it.category == bgCategory)
+                }
+            }
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(SceneBackground.entries.filter { it != SceneBackground.CUSTOM_IMAGE }) { bg ->
+                items(filteredBgs) { bg ->
                     FilterChip(
                         selected = activeScene.background == bg,
                         onClick = { onUpdateEnvironment(bg, null, null, null, null, null) },

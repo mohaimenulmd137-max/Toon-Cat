@@ -413,7 +413,9 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                                         },
                                         onCancelStagedEdit = { snap, depth ->
                                             viewModel.restoreSceneSnapshot(snap, depth)
-                                        }
+                                        },
+                                        bengaliTtsAvailable = viewModel.isBengaliTtsAvailable(),
+                                        onApplyVoiceEffect = viewModel::applyVoiceEffectToClip
                                     )
                                 }
                             }

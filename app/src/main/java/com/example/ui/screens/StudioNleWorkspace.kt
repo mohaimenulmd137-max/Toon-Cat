@@ -155,11 +155,13 @@ import com.example.domain.model.PropType
 import com.example.domain.model.RigControlMode
 import com.example.domain.model.RigJoint
 import com.example.domain.model.SceneBackground
+import com.example.domain.model.SceneCharacterInstance
 import com.example.domain.model.SoundAsset
 import com.example.domain.model.StudioScene
 import com.example.domain.model.StudioSettings
 import com.example.domain.model.TimelineTrackKind
 import com.example.domain.model.VoiceCharacterType
+import com.example.domain.model.VoiceEffectFilter
 import com.example.domain.model.VoiceEmotion
 import com.example.domain.model.WeatherType
 import com.example.engine.AnimationEvaluator
@@ -323,6 +325,8 @@ fun StudioNleWorkspace(
     onGetUndoDepth: () -> Int,
     onCommitStagedEdit: (StudioScene, Int) -> Unit,
     onCancelStagedEdit: (StudioScene, Int) -> Unit,
+    bengaliTtsAvailable: Boolean = true,
+    onApplyVoiceEffect: (String, VoiceEffectFilter, Float, Float) -> Unit = { _, _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var activeSheet by remember { mutableStateOf(NleSheet.NONE) }
@@ -330,8 +334,8 @@ fun StudioNleWorkspace(
     var stagedUndoDepth by remember { mutableStateOf(0) }
     var showResolutionMenu by remember { mutableStateOf(false) }
     var showGuides by remember { mutableStateOf(true) }
-    val hiddenTracks = remember { mutableStateMapOf<TimelineTrackKind, Boolean>() }
-    val lockedTracks = remember { mutableStateMapOf<TimelineTrackKind, Boolean>() }
+    val hiddenLayers = remember { mutableStateMapOf<String, Boolean>() }
+    val lockedLayers = remember { mutableStateMapOf<String, Boolean>() }
 
     fun openEditSheet(target: NleSheet) {
         if (activeSheet == NleSheet.NONE) {
@@ -676,7 +680,8 @@ fun StudioNleWorkspace(
                             evaluated = evaluated,
                             characterLibrary = charMap,
                             options = StageRenderer.RenderOptions(
-                                showRigOverlay = toolMode == StageToolMode.RIG_POSE && hiddenTracks[TimelineTrackKind.CHARACTER] != true,
+                                showRigOverlay = toolMode == StageToolMode.RIG_POSE &&
+                                    (selectedCharInstanceId == null || hiddenLayers["char_$selectedCharInstanceId"] != true),
                                 selectedCharacterId = selectedCharInstanceId,
                                 selectedJoint = selectedJoint,
                                 selectedPropId = selectedPropId,
@@ -1005,6 +1010,39 @@ fun StudioNleWorkspace(
             val playheadX = trackWidth * playheadFrac
             val layerColWidth = 148.dp
 
+            val displayRows = remember(scene.characters) {
+                val charRows: List<NleDisplayRow> = scene.characters.mapIndexed { idx, inst ->
+                    NleDisplayRow.CharacterRow(idx, inst)
+                }
+                val globalRows: List<NleDisplayRow> = listOf(
+                    NleDisplayRow.GlobalRow(
+                        rowId = "global_props",
+                        label = "বস্তু ও প্রপস",
+                        icon = Icons.Default.Diamond,
+                        color = TrackObjectColor,
+                        sheet = NleSheet.INTERACT_PROPS,
+                        kind = TimelineTrackKind.OBJECT
+                    ),
+                    NleDisplayRow.GlobalRow(
+                        rowId = "global_camera",
+                        label = "ক্যামেরা",
+                        icon = Icons.Default.Videocam,
+                        color = TrackCameraColor,
+                        sheet = NleSheet.CAMERA,
+                        kind = TimelineTrackKind.CAMERA
+                    ),
+                    NleDisplayRow.GlobalRow(
+                        rowId = "global_audio",
+                        label = "সাউন্ড ও মিউজিক",
+                        icon = Icons.Default.MusicNote,
+                        color = TrackMusicColor,
+                        sheet = NleSheet.AUDIO,
+                        kind = TimelineTrackKind.SOUND_EFFECTS
+                    )
+                )
+                charRows + globalRows
+            }
+
             Column(modifier = Modifier.fillMaxSize()) {
                 // Layers Header + Ruler Bar
                 Row(
@@ -1020,7 +1058,7 @@ fun StudioNleWorkspace(
                         horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
-                            text = "লেয়ার (${TimelineTrackKind.entries.size})",
+                            text = "লেয়ার (${displayRows.size})",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                             fontSize = 10.sp,
                             color = Color.White,
@@ -1187,28 +1225,58 @@ fun StudioNleWorkspace(
                     }
                 }
 
-                // Unified Synchronized Layers + Lanes List
-                val orderedTracks = remember(scene.trackOrder) {
-                    val base = scene.trackOrder.ifEmpty { TimelineTrackKind.entries }
-                    val missing = TimelineTrackKind.entries.filter { it !in base }
-                    base + missing
-                }
+                // Unified Synchronized Per-Character + 3 Global Layers List
                 val laneRowDp = 32.dp
                 val laneRowPx = with(density) { laneRowDp.toPx() }
 
                 Box(modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp)) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
-                        items(orderedTracks, key = { it.name }) { kind ->
-                            val isHidden = hiddenTracks[kind] == true
-                            val isLocked = lockedTracks[kind] == true
-                            val trackIdx = orderedTracks.indexOf(kind)
-                            val rawClips = remember(kind, scene) { extractTrackClips(kind, scene) }
+                        items(displayRows, key = { it.rowId }) { row ->
+                            val isHidden = hiddenLayers[row.rowId] == true
+                            val isLocked = lockedLayers[row.rowId] == true
+                            val isCharRow = row is NleDisplayRow.CharacterRow
+                            val isSelectedChar = row is NleDisplayRow.CharacterRow && row.instance.id == selectedCharInstanceId
+
+                            val rawClips = when (row) {
+                                is NleDisplayRow.CharacterRow -> remember(
+                                    row.instance,
+                                    scene.motionClips,
+                                    scene.faceClips,
+                                    scene.audioClips,
+                                    scene.durationMs
+                                ) {
+                                    extractCharacterLayerClips(row.instance, scene)
+                                }
+                                is NleDisplayRow.GlobalRow -> remember(row.kind, scene) {
+                                    extractGlobalTrackClips(row.kind, scene)
+                                }
+                            }
                             val (packedClips, laneCount) = remember(rawClips) { assignClipSubLanes(rawClips) }
                             val rowHeight = (laneRowDp * laneCount.coerceAtLeast(1)) + 6.dp
+                            val matchingKeyframes = when (row) {
+                                is NleDisplayRow.CharacterRow -> remember(scene.keyframes, row.instance.id) {
+                                    scene.keyframes.filter { it.targetId == row.instance.id }
+                                }
+                                is NleDisplayRow.GlobalRow -> remember(scene.keyframes, row.kind) {
+                                    scene.keyframes.filter { nleKfMatchesTrack(it, row.kind) }
+                                }
+                            }
+                            val rowColor = when (row) {
+                                is NleDisplayRow.CharacterRow -> if (isSelectedChar) NleGold else TrackCharacterColor
+                                is NleDisplayRow.GlobalRow -> row.color
+                            }
+                            val rowIcon = when (row) {
+                                is NleDisplayRow.CharacterRow -> Icons.Default.Person
+                                is NleDisplayRow.GlobalRow -> row.icon
+                            }
+                            val rowTitle = when (row) {
+                                is NleDisplayRow.CharacterRow -> "${row.index + 1}. ${row.instance.name}"
+                                is NleDisplayRow.GlobalRow -> row.label
+                            }
 
                             Row(
                                 modifier = Modifier
@@ -1216,14 +1284,18 @@ fun StudioNleWorkspace(
                                     .height(rowHeight),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Left Layer Card (Icon, Name, Move Layer Up/Down, Eye, Lock, +)
+                                // Left Layer Card (Icon, Name, Eye, Lock, +)
                                 Row(
                                     modifier = Modifier
                                         .width(layerColWidth)
                                         .fillMaxHeight()
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(NleSurface)
-                                        .border(1.dp, NleBorder, RoundedCornerShape(10.dp))
+                                        .background(if (isSelectedChar) NleAmberFill else NleSurface)
+                                        .border(
+                                            width = if (isSelectedChar) 1.4.dp else 1.dp,
+                                            color = if (isSelectedChar) NleGold else NleBorder,
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
                                         .padding(horizontal = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -1231,79 +1303,73 @@ fun StudioNleWorkspace(
                                         modifier = Modifier
                                             .weight(1f)
                                             .clickable {
-                                                if (!isLocked) openEditSheet(sheetForTrack(kind))
+                                                if (row is NleDisplayRow.CharacterRow) {
+                                                    onSelectCharacterInstance(row.instance.id)
+                                                    if (!isLocked) openEditSheet(NleSheet.MOTIONS)
+                                                } else if (row is NleDisplayRow.GlobalRow && !isLocked) {
+                                                    openEditSheet(row.sheet)
+                                                }
                                             },
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            imageVector = nleTrackIcon(kind),
+                                            imageVector = rowIcon,
                                             contentDescription = null,
-                                            tint = if (isHidden) Color.Gray else nleTrackColor(kind),
+                                            tint = if (isHidden) Color.Gray else rowColor,
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Spacer(Modifier.width(4.dp))
                                         Column {
                                             Text(
-                                                text = kind.label,
-                                                style = MaterialTheme.typography.labelSmall,
+                                                text = rowTitle,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = if (isSelectedChar) FontWeight.Bold else FontWeight.Medium
+                                                ),
                                                 fontSize = 11.sp,
-                                                color = if (isHidden) Color.Gray else Color.White,
+                                                color = when {
+                                                    isHidden -> Color.Gray
+                                                    isSelectedChar -> NleGold
+                                                    else -> Color.White
+                                                },
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            if (rawClips.isNotEmpty()) {
-                                                Text(
-                                                    text = "${rawClips.size} ক্লিপ",
-                                                    fontSize = 8.sp,
-                                                    color = nleTrackColor(kind).copy(alpha = 0.85f),
-                                                    maxLines = 1
-                                                )
-                                            }
+                                            Text(
+                                                text = if (isCharRow) "${rawClips.size} অ্যাকশন" else "${rawClips.size} ক্লিপ",
+                                                fontSize = 8.sp,
+                                                color = rowColor.copy(alpha = 0.85f),
+                                                maxLines = 1
+                                            )
                                         }
                                     }
-                                    Icon(
-                                        Icons.Default.ArrowUpward,
-                                        contentDescription = "লেয়ার উপরে নিন",
-                                        tint = if (trackIdx > 0) Color(0xFF94A3B8) else Color(0xFF334155),
-                                        modifier = Modifier.size(14.dp).clickable(enabled = trackIdx > 0) {
-                                            onMoveLayerOrder(kind, -1)
-                                        }
-                                    )
-                                    Spacer(Modifier.width(2.dp))
-                                    Icon(
-                                        Icons.Default.ArrowDownward,
-                                        contentDescription = "লেয়ার নিচে নিন",
-                                        tint = if (trackIdx < orderedTracks.lastIndex) Color(0xFF94A3B8) else Color(0xFF334155),
-                                        modifier = Modifier.size(14.dp).clickable(enabled = trackIdx < orderedTracks.lastIndex) {
-                                            onMoveLayerOrder(kind, 1)
-                                        }
-                                    )
-                                    Spacer(Modifier.width(3.dp))
                                     Icon(
                                         imageVector = if (isHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                         contentDescription = "দেখা/লুকানো",
                                         tint = if (isHidden) StudioCoral else Color(0xFFCBD5E1),
-                                        modifier = Modifier.size(13.dp).clickable {
-                                            hiddenTracks[kind] = !isHidden
+                                        modifier = Modifier.size(14.dp).clickable {
+                                            hiddenLayers[row.rowId] = !isHidden
                                         }
                                     )
-                                    Spacer(Modifier.width(3.dp))
+                                    Spacer(Modifier.width(4.dp))
                                     Icon(
                                         imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
                                         contentDescription = "লক/আনলক",
                                         tint = if (isLocked) NleGold else Color(0xFF94A3B8),
-                                        modifier = Modifier.size(13.dp).clickable {
-                                            lockedTracks[kind] = !isLocked
+                                        modifier = Modifier.size(14.dp).clickable {
+                                            lockedLayers[row.rowId] = !isLocked
                                         }
                                     )
-                                    Spacer(Modifier.width(3.dp))
+                                    Spacer(Modifier.width(4.dp))
                                     Icon(
                                         imageVector = Icons.Default.Add,
-                                        contentDescription = "${kind.label}-এ যোগ করুন",
+                                        contentDescription = "$rowTitle-এ যোগ করুন",
                                         tint = Color.White,
-                                        modifier = Modifier.size(15.dp).clickable {
-                                            if (!isLocked) {
-                                                openEditSheet(sheetForTrack(kind))
+                                        modifier = Modifier.size(16.dp).clickable {
+                                            if (row is NleDisplayRow.CharacterRow) {
+                                                onSelectCharacterInstance(row.instance.id)
+                                                if (!isLocked) openEditSheet(NleSheet.MOTIONS)
+                                            } else if (row is NleDisplayRow.GlobalRow && !isLocked) {
+                                                openEditSheet(row.sheet)
                                             }
                                         }
                                     )
@@ -1318,9 +1384,11 @@ fun StudioNleWorkspace(
                                         .horizontalScroll(hScroll)
                                 ) {
                                     NleTimelineLane(
-                                        kind = kind,
                                         scene = scene,
+                                        rowColor = rowColor,
+                                        useCategoryColors = isCharRow,
                                         packedClips = packedClips,
+                                        matchingKeyframes = matchingKeyframes,
                                         laneCount = laneCount,
                                         laneRowDp = laneRowDp,
                                         laneRowPx = laneRowPx,
@@ -1330,11 +1398,15 @@ fun StudioNleWorkspace(
                                         isLocked = isLocked,
                                         selectedTimelineClip = selectedTimelineClip,
                                         onSeek = onSeek,
-                                        onSelectTimelineClip = onSelectTimelineClip,
+                                        onSelectTimelineClip = { sel ->
+                                            if (row is NleDisplayRow.CharacterRow) {
+                                                onSelectCharacterInstance(row.instance.id)
+                                            }
+                                            onSelectTimelineClip(sel)
+                                        },
                                         onMoveTimelineClip = onMoveTimelineClip,
                                         onResizeTimelineClip = onResizeTimelineClip,
-                                        onDeleteKeyframe = onDeleteKeyframe,
-                                        onOpenSheet = { openEditSheet(sheetForTrack(kind)) }
+                                        onDeleteKeyframe = onDeleteKeyframe
                                     )
                                 }
                             }
@@ -1695,6 +1767,8 @@ fun StudioNleWorkspace(
                             onSplitClip = onSplitClip,
                             onDuplicateClip = onDuplicateClip,
                             onDeleteClip = onDeleteClip,
+                            bengaliTtsAvailable = bengaliTtsAvailable,
+                            onApplyVoiceEffect = onApplyVoiceEffect,
                             initialSubTab = 0
                         )
                         NleSheet.KEYFRAMES -> NleKeyframeAndPropsSheet(
@@ -1846,6 +1920,26 @@ private fun NleDockButton(
     }
 }
 
+private sealed interface NleDisplayRow {
+    val rowId: String
+
+    data class CharacterRow(
+        val index: Int,
+        val instance: SceneCharacterInstance
+    ) : NleDisplayRow {
+        override val rowId: String = "char_${instance.id}"
+    }
+
+    data class GlobalRow(
+        override val rowId: String,
+        val label: String,
+        val icon: ImageVector,
+        val color: Color,
+        val sheet: NleSheet,
+        val kind: TimelineTrackKind
+    ) : NleDisplayRow
+}
+
 private data class NleRenderClip(
     val id: String,
     val category: TimelineClipCategory,
@@ -1856,79 +1950,58 @@ private data class NleRenderClip(
     val visualRow: Int = 0
 )
 
-private fun extractTrackClips(kind: TimelineTrackKind, scene: StudioScene): List<NleRenderClip> {
+private fun extractCharacterLayerClips(charInst: SceneCharacterInstance, scene: StudioScene): List<NleRenderClip> {
     val dur = scene.durationMs.coerceAtLeast(1000L)
-    return when (kind) {
-        TimelineTrackKind.CHARACTER -> scene.characters.map { ch ->
-            NleRenderClip(
-                id = ch.id,
-                category = TimelineClipCategory.CHARACTER,
-                label = ch.name,
-                startMs = ch.startTimeMs,
-                endMs = (ch.endTimeMs ?: dur).coerceAtLeast(ch.startTimeMs + 250L),
-                preferredRow = ch.trackRow
-            )
-        }
-        TimelineTrackKind.BODY_ANIMATION -> scene.motionClips.map { clip ->
+    val presenceClip = NleRenderClip(
+        id = charInst.id,
+        category = TimelineClipCategory.CHARACTER,
+        label = "উপস্থিতি: ${charInst.name}",
+        startMs = charInst.startTimeMs,
+        endMs = (charInst.endTimeMs ?: dur).coerceAtLeast(charInst.startTimeMs + 250L),
+        preferredRow = 0
+    )
+    val motionClips = scene.motionClips
+        .filter { it.characterInstanceId == charInst.id }
+        .map { clip ->
             NleRenderClip(
                 id = clip.id,
                 category = TimelineClipCategory.BODY_MOTION,
                 label = clip.displayName,
                 startMs = clip.startTimeMs,
                 endMs = clip.endTimeMs.coerceAtLeast(clip.startTimeMs + 250L),
-                preferredRow = clip.trackRow
+                preferredRow = 1 + clip.trackRow.coerceIn(0, 3)
             )
         }
-        TimelineTrackKind.FACE_ANIMATION -> scene.faceClips.map { fc ->
+    val faceClips = scene.faceClips
+        .filter { it.characterInstanceId == charInst.id }
+        .map { fc ->
             NleRenderClip(
                 id = fc.id,
                 category = TimelineClipCategory.FACE_EXPR,
-                label = fc.expression.label,
+                label = "মুখ: ${fc.expression.label}",
                 startMs = fc.startTimeMs,
                 endMs = fc.endTimeMs.coerceAtLeast(fc.startTimeMs + 250L),
-                preferredRow = fc.trackRow
+                preferredRow = 2 + fc.trackRow.coerceIn(0, 3)
             )
         }
-        TimelineTrackKind.EYE_ANIMATION -> scene.faceClips.map { fc ->
+    val voiceClips = scene.audioClips
+        .filter { it.characterInstanceId == charInst.id }
+        .map { ac ->
             NleRenderClip(
-                id = fc.id,
-                category = TimelineClipCategory.FACE_EXPR,
-                label = "চোখ: ${fc.eyeDirection.label}",
-                startMs = fc.startTimeMs,
-                endMs = fc.endTimeMs.coerceAtLeast(fc.startTimeMs + 250L),
-                preferredRow = fc.trackRow
+                id = ac.id,
+                category = TimelineClipCategory.AUDIO,
+                label = "ভয়েস: ${ac.title}",
+                startMs = ac.startTimeMs,
+                endMs = ac.endTimeMs.coerceAtLeast(ac.startTimeMs + 250L),
+                preferredRow = 2 + ac.trackRow.coerceIn(0, 3)
             )
         }
-        TimelineTrackKind.LIP_SYNC -> scene.audioClips
-            .filter { it.dialogueText.isNotBlank() || it.trackType == AudioTrackType.DIALOGUE }
-            .map { ac ->
-                NleRenderClip(
-                    id = ac.id,
-                    category = TimelineClipCategory.AUDIO,
-                    label = "লিপ: ${ac.title}",
-                    startMs = ac.startTimeMs,
-                    endMs = ac.endTimeMs.coerceAtLeast(ac.startTimeMs + 250L),
-                    preferredRow = ac.trackRow
-                )
-            }
-        TimelineTrackKind.DIALOGUE, TimelineTrackKind.VOICE, TimelineTrackKind.SOUND_EFFECTS, TimelineTrackKind.MUSIC -> {
-            val targetType = when (kind) {
-                TimelineTrackKind.DIALOGUE -> AudioTrackType.DIALOGUE
-                TimelineTrackKind.VOICE -> AudioTrackType.VOICE
-                TimelineTrackKind.SOUND_EFFECTS -> AudioTrackType.SFX
-                else -> AudioTrackType.MUSIC
-            }
-            scene.audioClips.filter { it.trackType == targetType }.map { ac ->
-                NleRenderClip(
-                    id = ac.id,
-                    category = TimelineClipCategory.AUDIO,
-                    label = ac.title,
-                    startMs = ac.startTimeMs,
-                    endMs = ac.endTimeMs.coerceAtLeast(ac.startTimeMs + 250L),
-                    preferredRow = ac.trackRow
-                )
-            }
-        }
+    return listOf(presenceClip) + motionClips + faceClips + voiceClips
+}
+
+private fun extractGlobalTrackClips(kind: TimelineTrackKind, scene: StudioScene): List<NleRenderClip> {
+    val dur = scene.durationMs.coerceAtLeast(1000L)
+    return when (kind) {
         TimelineTrackKind.OBJECT -> scene.props.map { prop ->
             NleRenderClip(
                 id = prop.id,
@@ -1957,7 +2030,18 @@ private fun extractTrackClips(kind: TimelineTrackKind, scene: StudioScene): List
                 preferredRow = cut.trackRow
             )
         }
-        TimelineTrackKind.SCENE -> emptyList()
+        else -> scene.audioClips
+            .filter { it.characterInstanceId == null }
+            .map { ac ->
+                NleRenderClip(
+                    id = ac.id,
+                    category = TimelineClipCategory.AUDIO,
+                    label = "${ac.trackType.label}: ${ac.title}",
+                    startMs = ac.startTimeMs,
+                    endMs = ac.endTimeMs.coerceAtLeast(ac.startTimeMs + 250L),
+                    preferredRow = ac.trackRow
+                )
+            }
     }
 }
 
@@ -2037,9 +2121,11 @@ private fun NleQuickChip(
 
 @Composable
 private fun NleTimelineLane(
-    kind: TimelineTrackKind,
     scene: StudioScene,
+    rowColor: Color,
+    useCategoryColors: Boolean,
     packedClips: List<NleRenderClip>,
+    matchingKeyframes: List<Keyframe>,
     laneCount: Int,
     laneRowDp: Dp,
     laneRowPx: Float,
@@ -2052,11 +2138,10 @@ private fun NleTimelineLane(
     onSelectTimelineClip: (TimelineClipSelection?) -> Unit,
     onMoveTimelineClip: (TimelineClipCategory, String, Long, Int) -> Unit,
     onResizeTimelineClip: (TimelineClipCategory, String, Long, Long) -> Unit,
-    onDeleteKeyframe: (String) -> Unit,
-    onOpenSheet: () -> Unit
+    onDeleteKeyframe: (String) -> Unit
 ) {
     val totalMs = scene.durationMs.coerceAtLeast(1L).toFloat()
-    val laneColor = if (isHidden) Color(0xFF475569) else nleTrackColor(kind)
+    val laneBaseColor = if (isHidden) Color(0xFF475569) else rowColor
 
     Box(
         modifier = Modifier
@@ -2083,36 +2168,17 @@ private fun NleTimelineLane(
             )
         }
 
-        // Scene track displays full background span + tap-to-edit
-        if (kind == TimelineTrackKind.SCENE) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(laneRowDp - 4.dp)
-                    .padding(horizontal = 2.dp, vertical = 3.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(laneColor.copy(alpha = 0.16f))
-                    .border(1.dp, laneColor.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
-                    .clickable { if (!isLocked) onOpenSheet() }
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "${scene.name} • ${scene.background.label} (${"%.1f".format(scene.durationMs / 1000f)}s)",
-                    fontSize = 10.sp,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
         // Interactive draggable & edge-resizable clips
         packedClips.forEach { clip ->
             val isSelected = selectedTimelineClip?.id == clip.id && selectedTimelineClip.category == clip.category
+            val clipColor = when {
+                isHidden -> Color(0xFF475569)
+                useCategoryColors -> nleCategoryColor(clip.category)
+                else -> laneBaseColor
+            }
             NleInteractiveClipBlock(
                 clip = clip,
-                color = laneColor,
+                color = clipColor,
                 totalMs = totalMs,
                 trackWidth = trackWidth,
                 trackWidthPx = trackWidthPx,
@@ -2134,8 +2200,7 @@ private fun NleTimelineLane(
         }
 
         // Keyframe diamonds overlaid cleanly along the track
-        val matchingKfs = scene.keyframes.filter { kf -> nleKfMatchesTrack(kf, kind) }
-        matchingKfs.forEach { kf ->
+        matchingKeyframes.forEach { kf ->
             val frac = (kf.timeMs / totalMs).coerceIn(0f, 0.98f)
             Surface(
                 onClick = { if (!isLocked) onDeleteKeyframe(kf.id) },
@@ -2389,58 +2454,15 @@ private fun NleKeyframeAndPropsSheet(
     }
 }
 
-private fun sheetForTrack(kind: TimelineTrackKind): NleSheet = when (kind) {
-    TimelineTrackKind.CHARACTER -> NleSheet.CAST_AND_SCENE
-    TimelineTrackKind.BODY_ANIMATION -> NleSheet.MOTIONS
-    TimelineTrackKind.FACE_ANIMATION, TimelineTrackKind.EYE_ANIMATION, TimelineTrackKind.LIP_SYNC -> NleSheet.FACE_DIALOGUE
-    TimelineTrackKind.DIALOGUE, TimelineTrackKind.VOICE, TimelineTrackKind.SOUND_EFFECTS, TimelineTrackKind.MUSIC -> NleSheet.AUDIO
-    TimelineTrackKind.OBJECT -> NleSheet.INTERACT_PROPS
-    TimelineTrackKind.SCENE -> NleSheet.SCENE_ENV
-    TimelineTrackKind.CAMERA -> NleSheet.CAMERA
-}
-
 private fun nleKfMatchesTrack(kf: Keyframe, kind: TimelineTrackKind): Boolean = when (kind) {
-    TimelineTrackKind.CHARACTER -> kf.targetType in listOf(
-        KeyframeTargetType.CHAR_POS_X, KeyframeTargetType.CHAR_POS_Y,
-        KeyframeTargetType.CHAR_SCALE, KeyframeTargetType.CHAR_ROTATION,
-        KeyframeTargetType.JOINT_ANGLE, KeyframeTargetType.CHAR_VIEW_ANGLE
-    )
-    TimelineTrackKind.EYE_ANIMATION -> kf.targetType == KeyframeTargetType.EYE_DIR
-    TimelineTrackKind.LIP_SYNC -> kf.targetType == KeyframeTargetType.MOUTH_VISEME
     TimelineTrackKind.OBJECT -> kf.targetType in listOf(
         KeyframeTargetType.PROP_POS_X, KeyframeTargetType.PROP_POS_Y,
         KeyframeTargetType.PROP_SCALE, KeyframeTargetType.PROP_ROTATION
     )
-    TimelineTrackKind.SCENE -> kf.targetType == KeyframeTargetType.CAM_ROTATION
+    TimelineTrackKind.CAMERA -> kf.targetType in listOf(
+        KeyframeTargetType.CAM_PAN_X, KeyframeTargetType.CAM_PAN_Y,
+        KeyframeTargetType.CAM_ZOOM, KeyframeTargetType.CAM_ROTATION
+    )
+    TimelineTrackKind.SOUND_EFFECTS -> kf.targetType == KeyframeTargetType.AUDIO_VOLUME
     else -> false
-}
-
-private fun nleTrackIcon(kind: TimelineTrackKind): ImageVector = when (kind) {
-    TimelineTrackKind.CHARACTER -> Icons.Default.Person
-    TimelineTrackKind.BODY_ANIMATION -> Icons.Default.Animation
-    TimelineTrackKind.FACE_ANIMATION -> Icons.Default.Face
-    TimelineTrackKind.EYE_ANIMATION -> Icons.Default.Visibility
-    TimelineTrackKind.LIP_SYNC -> Icons.Default.RecordVoiceOver
-    TimelineTrackKind.DIALOGUE -> Icons.Default.TextFields
-    TimelineTrackKind.VOICE -> Icons.Default.Equalizer
-    TimelineTrackKind.SOUND_EFFECTS -> Icons.Default.AutoFixHigh
-    TimelineTrackKind.MUSIC -> Icons.Default.MusicNote
-    TimelineTrackKind.OBJECT -> Icons.Default.Diamond
-    TimelineTrackKind.SCENE -> Icons.Default.Wallpaper
-    TimelineTrackKind.CAMERA -> Icons.Default.Videocam
-}
-
-private fun nleTrackColor(kind: TimelineTrackKind): Color = when (kind) {
-    TimelineTrackKind.CHARACTER -> TrackCharacterColor
-    TimelineTrackKind.BODY_ANIMATION -> TrackBodyColor
-    TimelineTrackKind.FACE_ANIMATION -> TrackFaceColor
-    TimelineTrackKind.EYE_ANIMATION -> TrackEyeColor
-    TimelineTrackKind.LIP_SYNC -> TrackLipSyncColor
-    TimelineTrackKind.DIALOGUE -> TrackDialogueColor
-    TimelineTrackKind.VOICE -> TrackVoiceColor
-    TimelineTrackKind.SOUND_EFFECTS -> TrackSfxColor
-    TimelineTrackKind.MUSIC -> TrackMusicColor
-    TimelineTrackKind.OBJECT -> TrackObjectColor
-    TimelineTrackKind.SCENE -> TrackSceneColor
-    TimelineTrackKind.CAMERA -> TrackCameraColor
 }

@@ -20,6 +20,7 @@ import com.example.domain.model.AudioSourceType
 import com.example.domain.model.AudioTrackType
 import com.example.domain.model.StudioScene
 import com.example.domain.model.VoiceCharacterType
+import com.example.domain.model.VoiceEffectFilter
 import com.example.domain.model.VoiceEmotion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -65,53 +66,123 @@ object ProceduralVoice {
         }
 
         val phase = DoubleArray(1)
-        val synth = ShortArray(totalSamples) { i ->
+        val rawFloat = FloatArray(totalSamples)
+        for (i in 0 until totalSamples) {
             val progress = i.toFloat() / totalSamples.coerceAtLeast(1)
             val t = i / sampleRate.toFloat()
 
-            // Emotion pitch contour
             val contourMul = when (voiceEmotion) {
                 VoiceEmotion.HAPPY, VoiceEmotion.EXCITED ->
                     1.0f + 0.14f * sin(2.0 * Math.PI * 1.9 * t).toFloat()
                 VoiceEmotion.ANGRY ->
-                    1.06f - 0.12f * progress + 0.05f * sin(2.0 * Math.PI * 6.0 * t).toFloat()
+                    1.06f - 0.12f * progress + 0.04f * sin(2.0 * Math.PI * 5.0 * t).toFloat()
                 VoiceEmotion.SAD ->
                     1.02f - 0.22f * progress
                 VoiceEmotion.SCARED ->
-                    1.04f + 0.10f * sin(2.0 * Math.PI * 11.5 * t).toFloat()
+                    1.04f + 0.08f * sin(2.0 * Math.PI * 10.5 * t).toFloat()
                 VoiceEmotion.SURPRISED ->
-                    if (progress < 0.35f) 1.05f + 0.32f * (progress / 0.35f) else 1.25f - 0.15f * progress
+                    if (progress < 0.35f) 1.05f + 0.28f * (progress / 0.35f) else 1.22f - 0.14f * progress
                 VoiceEmotion.ACTION_RUN ->
-                    1.0f + 0.11f * abs(sin(2.0 * Math.PI * 3.6 * t)).toFloat()
+                    1.0f + 0.10f * abs(sin(2.0 * Math.PI * 3.4 * t)).toFloat()
                 VoiceEmotion.NORMAL ->
-                    1.0f + 0.06f * sin(2.0 * Math.PI * 2.0 * t).toFloat()
-            } + (if (isQuestion && progress > 0.7f) 0.22f * ((progress - 0.7f) / 0.3f) else 0f) +
-                (if (isExclaim && progress < 0.4f) 0.12f else 0f)
+                    1.0f + 0.05f * sin(2.0 * Math.PI * 2.0 * t).toFloat()
+            } + (if (isQuestion && progress > 0.7f) 0.20f * ((progress - 0.7f) / 0.3f) else 0f) +
+                (if (isExclaim && progress < 0.4f) 0.10f else 0f)
 
-            val vibrato = 1.0f + 0.028f * sin(2.0 * Math.PI * voiceEmotion.vibratoHz * t).toFloat()
+            val vibrato = 1.0f + 0.022f * sin(2.0 * Math.PI * voiceEmotion.vibratoHz * t).toFloat()
             val f0 = f0Base * contourMul * vibrato
             phase[0] += (2.0 * Math.PI * f0) / sampleRate
 
-            // Articulated vowel/consonant envelope + breathing breaks for running motion
             val rawSyl = abs(sin(2.0 * Math.PI * syllableRateHz * t)).toFloat()
             val syllableEnv = if (voiceEmotion == VoiceEmotion.ACTION_RUN) {
-                val breathGate = if ((t * 2.8f).toInt() % 3 == 2) 0.35f else 1.0f
+                val breathGate = if ((t * 2.8f).toInt() % 3 == 2) 0.30f else 1.0f
                 rawSyl * breathGate
             } else {
-                rawSyl.coerceAtLeast(0.12f)
+                0.15f + 0.85f * (rawSyl * rawSyl)
             }
 
-            // Formant mixture distinguishing male/female/child/elder & angry harshness
-            val h1 = sin(phase[0]).toFloat() * 0.48f
-            val h2 = sin(phase[0] * 2.0).toFloat() * (if (voiceCharacter.isFemaleHint == true) 0.30f else 0.20f)
-            val h3 = sin(phase[0] * 3.0).toFloat() * (if (voiceEmotion == VoiceEmotion.ANGRY) 0.24f else 0.12f)
-            val fadeIn = (progress / 0.05f).coerceIn(0f, 1f)
-            val fadeOut = ((1f - progress) / 0.06f).coerceIn(0f, 1f)
+            // Warm smooth vowel formants without harsh buzz
+            val h1 = sin(phase[0]).toFloat() * 0.56f
+            val h2 = sin(phase[0] * 2.0).toFloat() * (if (voiceCharacter.isFemaleHint == true) 0.24f else 0.15f)
+            val h3 = sin(phase[0] * 3.0).toFloat() * (if (voiceEmotion == VoiceEmotion.ANGRY) 0.12f else 0.05f)
+            val fadeIn = (progress / 0.08f).coerceIn(0f, 1f)
+            val fadeOut = ((1f - progress) / 0.08f).coerceIn(0f, 1f)
+            rawFloat[i] = (h1 + h2 + h3) * syllableEnv * voiceEmotion.energyScale * fadeIn * fadeOut
+        }
 
-            val sample = (h1 + h2 + h3) * syllableEnv * voiceEmotion.energyScale * fadeIn * fadeOut
-            (sample.coerceIn(-0.98f, 0.98f) * 32767f).toInt().toShort()
+        // Gentle 1-pole low-pass filter to remove paper/kazoo harshness
+        var lp = 0f
+        val synth = ShortArray(totalSamples) { i ->
+            lp += 0.22f * (rawFloat[i] - lp)
+            (lp.coerceIn(-0.96f, 0.96f) * 32767f).toInt().toShort()
         }
         return synth to estDurMs
+    }
+
+    /**
+     * Free non-destructive DSP Voice Changer using Hann-windowed Overlap-Add pitch shift
+     * + optional hall echo so recorded mic voices transform cleanly into Male/Female/Child/Elder!
+     */
+    fun applyVoiceEffectDsp(
+        samples: ShortArray,
+        sampleRate: Int,
+        effect: VoiceEffectFilter,
+        customPitch: Float = 1.0f,
+        customSpeed: Float = 1.0f
+    ): ShortArray {
+        if (samples.isEmpty()) return samples
+        val pitchFactor = (effect.pitchMultiplier * customPitch).coerceIn(0.55f, 2.10f)
+        val speedFactor = (effect.speedMultiplier * customSpeed).coerceIn(0.60f, 1.80f)
+
+        // If neutral pitch and speed, only apply echo if requested
+        val pitched: ShortArray = if (abs(pitchFactor - 1.0f) < 0.02f && abs(speedFactor - 1.0f) < 0.02f) {
+            samples.copyOf()
+        } else {
+            // Resample then time-stretch back via Hann OLA to isolate pitch from tempo
+            val targetOutLen = (samples.size / speedFactor).toInt().coerceAtLeast(1)
+            val grainSize = (sampleRate * 0.036f).toInt().coerceIn(512, 2048)
+            val hopOut = grainSize / 4
+            val hopIn = (hopOut * speedFactor).coerceAtLeast(1f)
+
+            val outAcc = FloatArray(targetOutLen + grainSize)
+            val winSum = FloatArray(targetOutLen + grainSize)
+            val window = FloatArray(grainSize) { n ->
+                (0.5 * (1.0 - kotlin.math.cos(2.0 * Math.PI * n / (grainSize - 1)))).toFloat()
+            }
+
+            var inPos = 0f
+            var outPos = 0
+            while (outPos < targetOutLen && inPos < samples.size - 2) {
+                for (k in 0 until grainSize) {
+                    val srcIdxF = inPos + k * pitchFactor
+                    val idx0 = srcIdxF.toInt()
+                    if (idx0 >= samples.lastIndex) break
+                    val frac = srcIdxF - idx0
+                    val s = (samples[idx0] * (1f - frac) + samples[idx0 + 1] * frac) / 32767f
+                    val w = window[k]
+                    outAcc[outPos + k] += s * w
+                    winSum[outPos + k] += w
+                }
+                inPos += hopIn
+                outPos += hopOut
+            }
+            ShortArray(targetOutLen) { i ->
+                val denom = winSum[i].coerceAtLeast(0.001f)
+                ((outAcc[i] / denom).coerceIn(-0.98f, 0.98f) * 32767f).toInt().toShort()
+            }
+        }
+
+        val echoMix = effect.echoMix.coerceIn(0f, 0.55f)
+        if (echoMix <= 0.01f) return pitched
+
+        val delaySamples = (sampleRate * 0.145f).toInt()
+        val withEcho = FloatArray(pitched.size)
+        for (i in pitched.indices) {
+            val dry = pitched[i] / 32767f
+            val wet = if (i >= delaySamples) (withEcho[i - delaySamples] * echoMix) else 0f
+            withEcho[i] = (dry + wet).coerceIn(-0.98f, 0.98f)
+        }
+        return ShortArray(withEcho.size) { i -> (withEcho[i] * 32767f).toInt().toShort() }
     }
 }
 
@@ -140,6 +211,13 @@ class AudioEngine(private val context: Context) {
         } catch (e: Exception) {
             Log.w("AudioEngine", "TTS init skipped: ${e.message}")
         }
+    }
+
+    fun isBengaliTtsAvailable(): Boolean {
+        val engine = tts ?: return false
+        if (!ttsReady) return false
+        return (engine.isLanguageAvailable(Locale("bn", "BD")) >= TextToSpeech.LANG_AVAILABLE) ||
+            (engine.isLanguageAvailable(Locale("bn", "IN")) >= TextToSpeech.LANG_AVAILABLE)
     }
 
     fun release() {
@@ -400,6 +478,7 @@ class AudioEngine(private val context: Context) {
             trackType = AudioTrackType.VOICE,
             sourceType = AudioSourceType.RECORDED,
             filePath = file.absolutePath,
+            originalFilePath = file.absolutePath,
             characterInstanceId = characterInstanceId,
             startTimeMs = startTimeMs,
             trimStartMs = 0L,
@@ -407,6 +486,45 @@ class AudioEngine(private val context: Context) {
             originalDurationMs = durMs,
             volume = 0.95f,
             waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(samples, 64)
+        )
+    }
+
+    suspend fun applyVoiceEffectToClip(
+        clip: AudioClip,
+        effect: VoiceEffectFilter,
+        customPitch: Float = 1.0f,
+        customSpeed: Float = 1.0f
+    ): AudioClip = withContext(Dispatchers.IO) {
+        val srcPath = clip.originalFilePath ?: clip.filePath
+        val srcFile = srcPath?.let { File(it) }?.takeIf { it.exists() }
+        val baseSamples = if (srcFile != null) {
+            ProceduralSoundSynthesizer.readWavSamples(srcFile)
+        } else {
+            loadClipSamples(clip)
+        }
+        if (baseSamples.isEmpty()) return@withContext clip.copy(voiceEffect = effect, pitch = customPitch, playbackSpeed = customSpeed)
+
+        val processed = ProceduralVoice.applyVoiceEffectDsp(
+            samples = baseSamples,
+            sampleRate = ProceduralSoundSynthesizer.SAMPLE_RATE,
+            effect = effect,
+            customPitch = customPitch,
+            customSpeed = customSpeed
+        )
+        val dir = File(context.filesDir, "audio").apply { mkdirs() }
+        val outFile = File(dir, "fx_${UUID.randomUUID()}.wav")
+        ProceduralSoundSynthesizer.writeWavFile(outFile, processed)
+        val durMs = ((processed.size * 1000L) / ProceduralSoundSynthesizer.SAMPLE_RATE).coerceAtLeast(250L)
+        clip.copy(
+            filePath = outFile.absolutePath,
+            originalFilePath = srcPath ?: clip.filePath,
+            trimStartMs = 0L,
+            trimEndMs = durMs,
+            originalDurationMs = durMs,
+            pitch = 1.0f,
+            playbackSpeed = 1.0f,
+            voiceEffect = effect,
+            waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(processed, 64)
         )
     }
 
@@ -447,6 +565,7 @@ class AudioEngine(private val context: Context) {
             trackType = trackType,
             sourceType = AudioSourceType.IMPORTED,
             filePath = file.absolutePath,
+            originalFilePath = file.absolutePath,
             characterInstanceId = characterInstanceId,
             startTimeMs = startTimeMs,
             trimStartMs = 0L,

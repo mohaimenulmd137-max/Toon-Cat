@@ -20,7 +20,7 @@ class ExampleRobolectricTest {
     fun `app name matches ToonMotion Studio`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val appName = context.getString(R.string.app_name)
-        assertEquals("ToonMotion Studio", appName)
+        assertEquals("টুনমোশন স্টুডিও", appName)
     }
 
     @Test

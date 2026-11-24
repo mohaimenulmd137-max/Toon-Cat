@@ -77,6 +77,7 @@ import com.example.domain.model.SoundAsset
 import com.example.domain.model.SoundCategory
 import com.example.domain.model.StudioScene
 import com.example.domain.model.VoiceCharacterType
+import com.example.domain.model.VoiceEffectFilter
 import com.example.domain.model.VoiceEmotion
 import com.example.engine.SoundLibraryCatalog
 import com.example.ui.theme.StudioAmber
@@ -273,6 +274,8 @@ fun AudioStudioPanel(
     onSplitClip: (String) -> Unit,
     onDuplicateClip: (String) -> Unit,
     onDeleteClip: (String) -> Unit,
+    bengaliTtsAvailable: Boolean = true,
+    onApplyVoiceEffect: (String, VoiceEffectFilter, Float, Float) -> Unit = { _, _, _, _ -> },
     initialSubTab: Int = 0
 ) {
     val context = LocalContext.current
@@ -417,6 +420,63 @@ fun AudioStudioPanel(
                                             Text("মিউজিক ইম্পোর্ট")
                                         }
                                     }
+
+                                    // Free Offline Voice Changer / Voice Editing on recorded or imported voice clips
+                                    val editableVoiceClip = scene.audioClips.find {
+                                        it.id == selectedAudioClipId && (it.trackType == AudioTrackType.VOICE || it.trackType == AudioTrackType.DIALOGUE)
+                                    } ?: scene.audioClips.lastOrNull {
+                                        (it.trackType == AudioTrackType.VOICE || it.trackType == AudioTrackType.DIALOGUE) &&
+                                            (it.characterInstanceId == selectedCharInstanceId || selectedCharInstanceId == null)
+                                    } ?: scene.audioClips.lastOrNull {
+                                        it.trackType == AudioTrackType.VOICE || it.trackType == AudioTrackType.DIALOGUE
+                                    }
+
+                                    if (editableVoiceClip != null && editableVoiceClip.filePath != null) {
+                                        var selectedEffect by remember(editableVoiceClip.id) {
+                                            mutableStateOf(editableVoiceClip.voiceEffect)
+                                        }
+                                        var dspPitch by remember(editableVoiceClip.id) {
+                                            mutableFloatStateOf(1.0f)
+                                        }
+                                        var dspSpeed by remember(editableVoiceClip.id) {
+                                            mutableFloatStateOf(1.0f)
+                                        }
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            "ফ্রি ভয়েস এডিটিং ও চেঞ্জার (${editableVoiceClip.title})",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = StudioAmber
+                                        )
+                                        EnumChipRow(VoiceEffectFilter.entries, selectedEffect, { it.label }) {
+                                            selectedEffect = it
+                                        }
+                                        LabeledSlider("অতিরিক্ত পিচ সমন্বয়", dspPitch, 0.75f..1.45f) { dspPitch = it }
+                                        LabeledSlider("কথার গতি সমন্বয়", dspSpeed, 0.75f..1.35f) { dspSpeed = it }
+                                        Button(
+                                            onClick = {
+                                                onApplyVoiceEffect(editableVoiceClip.id, selectedEffect, dspPitch, dspSpeed)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = StudioAmber, contentColor = StudioObsidian),
+                                            modifier = Modifier.fillMaxWidth().testTag("apply_voice_effect_btn")
+                                        ) {
+                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("ভয়েস এফেক্ট প্রয়োগ ও শুনুন (${selectedEffect.label})")
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (!bengaliTtsAvailable) {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = StudioAmber.copy(alpha = 0.14f))
+                                ) {
+                                    Text(
+                                        text = "নোট: আপনার ডিভাইসে বাংলা অফলাইন TTS ভয়েস ইঞ্জিন সক্রিয় নেই। প্রাকৃতিক বাংলা সংলাপের জন্য উপরের 'মাইক্রোফোনে ভয়েস রেকর্ড করুন' + 'ফ্রি ভয়েস এডিটিং ও চেঞ্জার' (পুরুষ/নারী/শিশু/বৃদ্ধ) ব্যবহার করুন—এতে কণ্ঠ রোবোটিক হবে না!",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = StudioAmber,
+                                        modifier = Modifier.padding(10.dp)
+                                    )
                                 }
                             }
 
@@ -577,6 +637,17 @@ fun AudioStudioPanel(
                                                     checked = activeClip.loop,
                                                     onCheckedChange = { l -> onUpdateClip(activeClip.id) { it.copy(loop = l) } }
                                                 )
+                                            }
+                                            if ((activeClip.trackType == AudioTrackType.VOICE || activeClip.trackType == AudioTrackType.DIALOGUE) && activeClip.filePath != null) {
+                                                var mixEffect by remember(activeClip.id) { mutableStateOf(activeClip.voiceEffect) }
+                                                Text("ফ্রি ভয়েস এফেক্ট পরিবর্তন", style = MaterialTheme.typography.labelMedium, color = StudioAmber)
+                                                EnumChipRow(VoiceEffectFilter.entries, mixEffect, { it.label }) { mixEffect = it }
+                                                FilledTonalButton(
+                                                    onClick = { onApplyVoiceEffect(activeClip.id, mixEffect, 1.0f, 1.0f) },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text("ভয়েস এফেক্ট প্রয়োগ ও শুনুন")
+                                                }
                                             }
                                         }
                                     }

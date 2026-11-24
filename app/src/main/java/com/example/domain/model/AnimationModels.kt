@@ -45,9 +45,13 @@ enum class MotionPreset(
     PULL("টেনে ধরা", MotionCategory.UPPER_BODY, 1600L),
     CARRY("জিনিস বহন করা", MotionCategory.UPPER_BODY, 2400L),
 
-    // Actions
-    EAT("খাওয়া", MotionCategory.ACTIONS, 2400L),
-    DRINK("পান করা", MotionCategory.ACTIONS, 2000L),
+    // Actions (Human Realistic Daily Life)
+    TALK_ON_PHONE("মোবাইলে কথা বলা", MotionCategory.ACTIONS, 2600L),
+    DRIVE_CAR("গাড়ি চালানো", MotionCategory.MOVEMENT, 3000L, false),
+    RIDE_RICKSHAW("রিকশা চালানো", MotionCategory.MOVEMENT, 3000L, false),
+    WORK_TYPING("কাজ / পড়াশোনা", MotionCategory.ACTIONS, 2400L),
+    EAT("খাবার খাওয়া", MotionCategory.ACTIONS, 2400L),
+    DRINK("চা / পানি পান করা", MotionCategory.ACTIONS, 2000L),
     PICK_UP("তুলে নেওয়া", MotionCategory.ACTIONS, 1500L),
     PUT_DOWN("নামিয়ে রাখা", MotionCategory.ACTIONS, 1500L),
     GIVE_OBJECT("জিনিস দেওয়া", MotionCategory.ACTIONS, 1800L),

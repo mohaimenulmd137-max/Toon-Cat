@@ -3,6 +3,12 @@ package com.example.domain.model
 import com.squareup.moshi.JsonClass
 
 enum class SceneBackground(val label: String, val category: String, val defaultSkyHex: Long, val defaultGroundHex: Long) {
+    BD_VILLAGE_HOME("বাংলার গ্রাম ও উঠান", "বাংলাদেশ", 0xFF7FD1FF, 0xFF5FA343),
+    BD_TEA_STALL("গ্রামের চায়ের দোকান", "বাংলাদেশ", 0xFF93C5FD, 0xFF8C6B4F),
+    BD_RIVER_BOAT("নদীর ঘাট ও নৌকা", "বাংলাদেশ", 0xFF7DD3FC, 0xFF4F9D53),
+    BD_CITY_STREET("ঢাকার রাস্তা ও শহর", "বাংলাদেশ", 0xFF7CB9E8, 0xFF4B5563),
+    BD_SCHOOL("বাংলাদেশের স্কুল মাঠ", "বাংলাদেশ", 0xFF86CEFA, 0xFF569E4E),
+    BD_DINING("ঘরোয়া খাবার ঘর", "বাংলাদেশ", 0xFF3E4B59, 0xFF8B6A50),
     BEDROOM("শোবার ঘর", "ঘরোয়া", 0xFF282E4A, 0xFF4A3B31),
     LIVING_ROOM("বসার ঘর", "ঘরোয়া", 0xFF3A3548, 0xFF6B4E3D),
     KITCHEN("রান্নাঘর", "ঘরোয়া", 0xFF3E4B59, 0xFF8C7A6B),
@@ -47,16 +53,24 @@ enum class WeatherType(val label: String) {
 }
 
 enum class PropType(val label: String) {
-    CHAIR("চেয়ার"),
-    TABLE("টেবিল"),
+    RICKSHAW("রিকশা"),
+    VEHICLE("গাড়ি / সিএনজি"),
+    BICYCLE("সাইকেল"),
     PHONE("স্মার্টফোন"),
-    BOOK("বই"),
+    TEA_CUP("চায়ের কাপ"),
+    RICE_PLATE("ভাতের থালা"),
+    CHAIR("চেয়ার / বেঞ্চ"),
+    TABLE("টেবিল"),
+    BOOK("বই / খাতা"),
     BAG("ব্যাগ"),
     CUP("কফির কাপ"),
     PLATE("প্লেট"),
-    FOOD("খাবার / আপেল"),
-    VEHICLE("গাড়ি"),
-    TOOL("হাতুড়ি / টুল"),
+    FOOD("খাবার / ফল"),
+    UMBRELLA("ছাতা"),
+    HURRICANE("হারিকেন"),
+    CRICKET_BAT("ক্রিকেট ব্যাট"),
+    TREE("আম / বট গাছ"),
+    TOOL("হাতুড়ি / কাজের টুল"),
     TOY("বল / খেলনা"),
     DOOR("দরজা"),
     WINDOW("জানালা"),

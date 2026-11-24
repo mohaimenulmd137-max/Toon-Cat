@@ -171,6 +171,94 @@ object StageRenderer {
         canvas.drawLine(-w * 0.5f, horizonY, w * 1.5f, horizonY, stroke)
 
         when (scene.background) {
+            SceneBackground.BD_VILLAGE_HOME -> {
+                fill.color = Color.argb(190, 255, 255, 255)
+                drawCloud(canvas, w * 0.22f, h * 0.16f, w * 0.09f, fill)
+                drawCloud(canvas, w * 0.76f, h * 0.14f, w * 0.10f, fill)
+                // Distant green trees + tin-roof Bengali cottage (টিনের ঘর)
+                drawCartoonTree(canvas, w * 0.12f, horizonY, h * 0.26f, fill, stroke)
+                drawCartoonTree(canvas, w * 0.88f, horizonY, h * 0.24f, fill, stroke)
+                // Cottage wall
+                fill.color = 0xFFE6D5B8.toInt()
+                canvas.drawRect(w * 0.26f, horizonY - h * 0.18f, w * 0.56f, horizonY, fill)
+                stroke.color = 0xFF5C4033.toInt()
+                stroke.strokeWidth = 2.5f
+                canvas.drawRect(w * 0.26f, horizonY - h * 0.18f, w * 0.56f, horizonY, stroke)
+                // Tin sloped roof
+                fill.color = 0xFFB91C1C.toInt()
+                val roof = Path().apply {
+                    moveTo(w * 0.22f, horizonY - h * 0.18f)
+                    lineTo(w * 0.41f, horizonY - h * 0.30f)
+                    lineTo(w * 0.60f, horizonY - h * 0.18f)
+                    close()
+                }
+                canvas.drawPath(roof, fill)
+                canvas.drawPath(roof, stroke)
+                // Door & Window
+                fill.color = 0xFF78350F.toInt()
+                canvas.drawRect(w * 0.37f, horizonY - h * 0.12f, w * 0.44f, horizonY, fill)
+                fill.color = 0xFF93C5FD.toInt()
+                canvas.drawRect(w * 0.47f, horizonY - h * 0.13f, w * 0.53f, horizonY - h * 0.06f, fill)
+                // Courtyard dirt path (উঠান / মেঠো পথ)
+                fill.color = 0xFFD2B48C.toInt()
+                canvas.drawRect(-w * 0.2f, horizonY + h * 0.05f, w * 1.2f, horizonY + h * 0.24f, fill)
+            }
+            SceneBackground.BD_TEA_STALL -> {
+                drawCartoonTree(canvas, w * 0.10f, horizonY, h * 0.25f, fill, stroke)
+                // টং চায়ের দোকান
+                fill.color = 0xFF7C2D12.toInt()
+                canvas.drawRect(w * 0.28f, horizonY - h * 0.25f, w * 0.72f, horizonY, fill)
+                // Striped awning roof
+                fill.color = 0xFF0F766E.toInt()
+                canvas.drawRect(w * 0.24f, horizonY - h * 0.30f, w * 0.76f, horizonY - h * 0.23f, fill)
+                // Counter & tea kettle
+                fill.color = 0xFFB45309.toInt()
+                canvas.drawRect(w * 0.30f, horizonY - h * 0.10f, w * 0.70f, horizonY, fill)
+                fill.color = 0xFFFACC15.toInt()
+                canvas.drawCircle(w * 0.50f, horizonY - h * 0.13f, h * 0.025f, fill)
+            }
+            SceneBackground.BD_RIVER_BOAT -> {
+                fill.color = 0xFFFDE047.toInt()
+                canvas.drawCircle(w * 0.80f, h * 0.18f, h * 0.055f, fill)
+                // River water band
+                fill.color = 0xFF0284C7.toInt()
+                canvas.drawRect(-w * 0.3f, horizonY - h * 0.08f, w * 1.3f, horizonY + h * 0.08f, fill)
+                // Traditional Sailboat (পালতোলা নৌকা)
+                fill.color = 0xFF451A03.toInt()
+                val boat = Path().apply {
+                    moveTo(w * 0.35f, horizonY)
+                    lineTo(w * 0.62f, horizonY)
+                    lineTo(w * 0.56f, horizonY + h * 0.035f)
+                    lineTo(w * 0.41f, horizonY + h * 0.035f)
+                    close()
+                }
+                canvas.drawPath(boat, fill)
+                fill.color = 0xFFEF4444.toInt()
+                val sail = Path().apply {
+                    moveTo(w * 0.48f, horizonY - h * 0.18f)
+                    lineTo(w * 0.57f, horizonY - h * 0.05f)
+                    lineTo(w * 0.48f, horizonY - h * 0.02f)
+                    close()
+                }
+                canvas.drawPath(sail, fill)
+            }
+            SceneBackground.BD_SCHOOL -> {
+                fill.color = Color.argb(180, 255, 255, 255)
+                drawCloud(canvas, w * 0.25f, h * 0.15f, w * 0.09f, fill)
+                // School Building
+                fill.color = 0xFFFEF3C7.toInt()
+                canvas.drawRect(w * 0.18f, horizonY - h * 0.26f, w * 0.82f, horizonY, fill)
+                fill.color = 0xFF047857.toInt()
+                canvas.drawRect(w * 0.16f, horizonY - h * 0.29f, w * 0.84f, horizonY - h * 0.25f, fill)
+                // Bangladesh Flag Pole
+                stroke.color = 0xFF334155.toInt()
+                stroke.strokeWidth = 4f
+                canvas.drawLine(w * 0.10f, horizonY, w * 0.10f, horizonY - h * 0.34f, stroke)
+                fill.color = 0xFF006A4E.toInt()
+                canvas.drawRect(w * 0.10f, horizonY - h * 0.34f, w * 0.18f, horizonY - h * 0.27f, fill)
+                fill.color = 0xFFF42A41.toInt()
+                canvas.drawCircle(w * 0.136f, horizonY - h * 0.305f, h * 0.018f, fill)
+            }
             SceneBackground.PARK, SceneBackground.PLAYGROUND, SceneBackground.VILLAGE -> {
                 // Soft cartoon clouds + rolling hills + trees
                 fill.color = Color.argb(180, 255, 255, 255)
@@ -194,7 +282,7 @@ object StageRenderer {
                     canvas.drawRect(-w * 0.3f, horizonY + h * 0.09f, w * 1.3f, horizonY + h * 0.22f, fill)
                 }
             }
-            SceneBackground.CITY, SceneBackground.STREET, SceneBackground.NIGHT_SCENE, SceneBackground.RAINY_SCENE -> {
+            SceneBackground.CITY, SceneBackground.STREET, SceneBackground.BD_CITY_STREET, SceneBackground.NIGHT_SCENE, SceneBackground.RAINY_SCENE -> {
                 val isNight = scene.background == SceneBackground.NIGHT_SCENE || scene.background == SceneBackground.RAINY_SCENE
                 val bldgColors = if (isNight) intArrayOf(0xFF162038.toInt(), 0xFF1E2942.toInt(), 0xFF131B2E.toInt())
                 else intArrayOf(0xFF51637A.toInt(), 0xFF425266.toInt(), 0xFF60748C.toInt())
@@ -264,8 +352,8 @@ object StageRenderer {
                 canvas.drawCircle(w * 0.82f, h * 0.16f, h * 0.06f, fill)
             }
             SceneBackground.BEDROOM, SceneBackground.LIVING_ROOM, SceneBackground.KITCHEN,
-            SceneBackground.OFFICE, SceneBackground.SCHOOL, SceneBackground.CLASSROOM,
-            SceneBackground.RESTAURANT, SceneBackground.HOSPITAL -> {
+            SceneBackground.BD_DINING, SceneBackground.OFFICE, SceneBackground.SCHOOL,
+            SceneBackground.CLASSROOM, SceneBackground.RESTAURANT, SceneBackground.HOSPITAL -> {
                 // Indoor room perspective walls + window + floorboard lines
                 fill.color = blendColor(skyColor, Color.BLACK, 0.16f)
                 canvas.drawRect(-w * 0.3f, -h * 0.2f, w * 0.14f, horizonY, fill)
@@ -476,22 +564,35 @@ object StageRenderer {
         drawLimb(canvas, j(RigJoint.KNEE_R), j(RigJoint.LOWER_LEG_R), rig.legThickness * 0.9f, lowerLegColorR, outlineColor, strokePaint)
         drawShoe(canvas, j(RigJoint.LOWER_LEG_R), j(RigJoint.FOOT_R), rig.legThickness, shoeColor, character.clothing.shoesStyle, outlineColor, fillPaint, strokePaint, evalChar.viewAngle)
 
-        // Skirt / Dress bottom flare if selected
-        if (character.clothing.bottomStyle == BottomClothingStyle.SKIRT || character.clothing.topStyle == TopClothingStyle.DRESS) {
-            val skirtColor = if (character.clothing.topStyle == TopClothingStyle.DRESS) topColor else bottomColor
+        // Skirt / Lungi / Saree / Dress bottom flare if selected
+        val isLungiOrSaree = character.clothing.bottomStyle == BottomClothingStyle.LUNGI ||
+            character.clothing.bottomStyle == BottomClothingStyle.SAREE_DRAPE ||
+            character.clothing.topStyle == TopClothingStyle.SAREE
+        if (character.clothing.bottomStyle == BottomClothingStyle.SKIRT ||
+            character.clothing.topStyle == TopClothingStyle.DRESS ||
+            isLungiOrSaree
+        ) {
+            val wrapColor = if (character.clothing.topStyle == TopClothingStyle.DRESS || character.clothing.topStyle == TopClothingStyle.SAREE) topColor else bottomColor
             val hip = j(RigJoint.HIP)
-            val skirt = Path().apply {
-                moveTo(hip.x - rig.hipHalfWidth * 1.05f, hip.y - rig.upperLegLen * 0.1f)
-                lineTo(hip.x + rig.hipHalfWidth * 1.05f, hip.y - rig.upperLegLen * 0.1f)
-                lineTo(hip.x + rig.hipHalfWidth * 1.55f, hip.y + rig.upperLegLen * 0.72f)
-                lineTo(hip.x - rig.hipHalfWidth * 1.55f, hip.y + rig.upperLegLen * 0.72f)
+            val dropRatio = if (isLungiOrSaree) 1.38f else 0.72f
+            val flareWidth = if (isLungiOrSaree) 1.24f else 1.55f
+            val wrapPath = Path().apply {
+                moveTo(hip.x - rig.hipHalfWidth * 1.08f, hip.y - rig.upperLegLen * 0.1f)
+                lineTo(hip.x + rig.hipHalfWidth * 1.08f, hip.y - rig.upperLegLen * 0.1f)
+                lineTo(hip.x + rig.hipHalfWidth * flareWidth, hip.y + rig.upperLegLen * dropRatio)
+                lineTo(hip.x - rig.hipHalfWidth * flareWidth, hip.y + rig.upperLegLen * dropRatio)
                 close()
             }
-            fillPaint.color = skirtColor
-            canvas.drawPath(skirt, fillPaint)
+            fillPaint.color = wrapColor
+            canvas.drawPath(wrapPath, fillPaint)
+            if (character.clothing.bottomStyle == BottomClothingStyle.LUNGI) {
+                strokePaint.color = blendColor(wrapColor, Color.BLACK, 0.30f)
+                strokePaint.strokeWidth = 2f
+                canvas.drawLine(hip.x - rig.hipHalfWidth * 0.9f, hip.y + rig.upperLegLen * 0.65f, hip.x + rig.hipHalfWidth * 0.9f, hip.y + rig.upperLegLen * 0.65f, strokePaint)
+            }
             strokePaint.color = outlineColor
             strokePaint.strokeWidth = 2.6f
-            canvas.drawPath(skirt, strokePaint)
+            canvas.drawPath(wrapPath, strokePaint)
         }
 
         // Torso & Clothing
@@ -711,10 +812,31 @@ object StageRenderer {
                 }
                 canvas.drawPath(tie, fill)
             }
-            TopClothingStyle.TRADITIONAL -> {
+            TopClothingStyle.TRADITIONAL, TopClothingStyle.PUNJABI -> {
                 stroke.color = 0xFFFFD166.toInt()
                 stroke.strokeWidth = 3f
                 canvas.drawLine(cx, topY + 4f, cx, botY - 4f, stroke)
+            }
+            TopClothingStyle.SAREE -> {
+                // Diagonal Saree pallu drape
+                fill.color = blendColor(topColor, 0xFFFFD166.toInt(), 0.35f)
+                val pallu = Path().apply {
+                    moveTo(cx - torsoWidth * 0.52f, topY + 4f)
+                    lineTo(cx - torsoWidth * 0.18f, topY + 4f)
+                    lineTo(cx + torsoWidth * 0.52f, botY - 4f)
+                    lineTo(cx + torsoWidth * 0.18f, botY - 4f)
+                    close()
+                }
+                canvas.drawPath(pallu, fill)
+            }
+            TopClothingStyle.FOTUA -> {
+                // Shoulder Gamcha stripe
+                fill.color = 0xFFDC2626.toInt()
+                canvas.drawRoundRect(RectF(cx + torsoWidth * 0.14f, topY, cx + torsoWidth * 0.44f, botY - 8f), 6f, 6f, fill)
+            }
+            TopClothingStyle.SALWAR_KAMEEZ -> {
+                fill.color = blendColor(bottomColor, Color.WHITE, 0.2f)
+                canvas.drawRect(cx - torsoWidth * 0.08f, topY + 8f, cx + torsoWidth * 0.08f, botY - 6f, fill)
             }
             else -> Unit
         }
@@ -1176,6 +1298,23 @@ object StageRenderer {
                 canvas.drawArc(dome, 175f, 190f, true, fill)
                 canvas.drawArc(dome, 175f, 190f, true, stroke)
             }
+            HatStyle.TUPI -> {
+                fill.color = 0xFFF8FAFC.toInt()
+                val dome = RectF(c.x - r * 0.86f, c.y - r * 1.22f, c.x + r * 0.86f, c.y - r * 0.35f)
+                canvas.drawArc(dome, 180f, 180f, true, fill)
+                canvas.drawArc(dome, 180f, 180f, true, stroke)
+            }
+            HatStyle.MATHAL -> {
+                fill.color = 0xFFD97706.toInt()
+                val cone = Path().apply {
+                    moveTo(c.x, c.y - r * 1.55f)
+                    lineTo(c.x - r * 1.48f, c.y - r * 0.55f)
+                    lineTo(c.x + r * 1.48f, c.y - r * 0.55f)
+                    close()
+                }
+                canvas.drawPath(cone, fill)
+                canvas.drawPath(cone, stroke)
+            }
             HatStyle.NONE -> Unit
         }
     }
@@ -1306,6 +1445,77 @@ object StageRenderer {
                 fill.color = 0xFF93C5FD.toInt()
                 canvas.drawRect(-size * 0.6f, -size * 0.6f, size * 0.6f, size * 0.6f, fill)
                 canvas.drawRect(-size * 0.6f, -size * 0.6f, size * 0.6f, size * 0.6f, stroke)
+            }
+            PropType.RICKSHAW -> {
+                // Colorful Bangladeshi Rickshaw (হুড ও চাকা)
+                fill.color = 0xFFE11D48.toInt()
+                val hood = Path().apply {
+                    moveTo(-size * 1.05f, -size * 0.15f)
+                    lineTo(-size * 0.95f, -size * 1.10f)
+                    lineTo(-size * 0.10f, -size * 0.95f)
+                    lineTo(-size * 0.15f, -size * 0.15f)
+                    close()
+                }
+                canvas.drawPath(hood, fill)
+                canvas.drawPath(hood, stroke)
+                fill.color = 0xFF10B981.toInt()
+                canvas.drawRoundRect(RectF(-size * 1.05f, -size * 0.25f, size * 0.20f, size * 0.20f), 8f, 8f, fill)
+                canvas.drawRoundRect(RectF(-size * 1.05f, -size * 0.25f, size * 0.20f, size * 0.20f), 8f, 8f, stroke)
+                // Handlebar
+                stroke.color = 0xFF111827.toInt()
+                stroke.strokeWidth = 4f
+                canvas.drawLine(size * 0.15f, -size * 0.05f, size * 0.72f, -size * 0.65f, stroke)
+                // Wheels
+                canvas.drawCircle(-size * 0.68f, size * 0.34f, size * 0.32f, stroke)
+                canvas.drawCircle(size * 0.75f, size * 0.34f, size * 0.28f, stroke)
+            }
+            PropType.BICYCLE -> {
+                stroke.color = baseColor
+                stroke.strokeWidth = 4f
+                canvas.drawCircle(-size * 0.65f, size * 0.32f, size * 0.28f, stroke)
+                canvas.drawCircle(size * 0.65f, size * 0.32f, size * 0.28f, stroke)
+                canvas.drawLine(-size * 0.65f, size * 0.32f, 0f, -size * 0.15f, stroke)
+                canvas.drawLine(0f, -size * 0.15f, size * 0.65f, size * 0.32f, stroke)
+                canvas.drawLine(size * 0.45f, -size * 0.38f, size * 0.65f, size * 0.32f, stroke)
+            }
+            PropType.TEA_CUP -> {
+                fill.color = 0xFFF8FAFC.toInt()
+                canvas.drawRoundRect(RectF(-size * 0.24f, -size * 0.25f, size * 0.24f, size * 0.25f), 6f, 6f, fill)
+                canvas.drawRoundRect(RectF(-size * 0.24f, -size * 0.25f, size * 0.24f, size * 0.25f), 6f, 6f, stroke)
+                fill.color = 0xFF92400E.toInt()
+                canvas.drawRect(-size * 0.18f, -size * 0.20f, size * 0.18f, -size * 0.08f, fill)
+            }
+            PropType.RICE_PLATE -> {
+                fill.color = 0xFFE2E8F0.toInt()
+                canvas.drawOval(RectF(-size * 0.60f, -size * 0.20f, size * 0.60f, size * 0.20f), fill)
+                canvas.drawOval(RectF(-size * 0.60f, -size * 0.20f, size * 0.60f, size * 0.20f), stroke)
+                fill.color = Color.WHITE
+                canvas.drawOval(RectF(-size * 0.36f, -size * 0.14f, size * 0.36f, size * 0.08f), fill)
+            }
+            PropType.UMBRELLA -> {
+                fill.color = baseColor
+                val dome = RectF(-size * 0.78f, -size * 0.90f, size * 0.78f, -size * 0.05f)
+                canvas.drawArc(dome, 180f, 180f, true, fill)
+                canvas.drawArc(dome, 180f, 180f, true, stroke)
+                stroke.color = 0xFF1E293B.toInt()
+                stroke.strokeWidth = 3.5f
+                canvas.drawLine(0f, -size * 0.45f, 0f, size * 0.45f, stroke)
+            }
+            PropType.HURRICANE -> {
+                fill.color = 0xFFFDE047.toInt()
+                canvas.drawRoundRect(RectF(-size * 0.26f, -size * 0.40f, size * 0.26f, size * 0.18f), 10f, 10f, fill)
+                fill.color = 0xFF991B1B.toInt()
+                canvas.drawRect(-size * 0.32f, size * 0.18f, size * 0.32f, size * 0.38f, fill)
+            }
+            PropType.CRICKET_BAT -> {
+                fill.color = 0xFFD97706.toInt()
+                canvas.drawRoundRect(RectF(-size * 0.14f, -size * 0.20f, size * 0.14f, size * 0.65f), 4f, 4f, fill)
+                canvas.drawRoundRect(RectF(-size * 0.14f, -size * 0.20f, size * 0.14f, size * 0.65f), 4f, 4f, stroke)
+                fill.color = 0xFF1E293B.toInt()
+                canvas.drawRect(-size * 0.05f, -size * 0.68f, size * 0.05f, -size * 0.20f, fill)
+            }
+            PropType.TREE -> {
+                drawCartoonTree(canvas, 0f, size * 0.65f, size * 2.2f, fill, stroke)
             }
         }
 

@@ -54,13 +54,17 @@ class PlaceholderAiRepository : AiRepository {
         val lower = prompt.lowercase()
 
         val background = when {
+            "চা" in lower || "টং" in lower || "দোকান" in lower || "tea" in lower -> SceneBackground.BD_TEA_STALL
+            "নদী" in lower || "নৌকা" in lower || "ঘাট" in lower || "river" in lower -> SceneBackground.BD_RIVER_BOAT
+            "ঢাকা" in lower || "শহর" in lower || "রাস্তা" in lower || "city" in lower || "street" in lower -> SceneBackground.BD_CITY_STREET
+            "স্কুল" in lower || "বিদ্যালয়" in lower || "school" in lower -> SceneBackground.BD_SCHOOL
+            "ডাইনিং" in lower || "খাবার ঘর" in lower -> SceneBackground.BD_DINING
+            "গ্রাম" in lower || "উঠান" in lower || "বাড়ি" in lower || "village" in lower -> SceneBackground.BD_VILLAGE_HOME
             "park" in lower || "পার্ক" in lower || "বাগান" in lower -> SceneBackground.PARK
             "forest" in lower || "woods" in lower || "বন" in lower || "জঙ্গল" in lower -> SceneBackground.FOREST
             "beach" in lower || "ocean" in lower || "সমুদ্র" in lower || "সৈকত" in lower -> SceneBackground.BEACH
-            "city" in lower || "শহর" in lower -> SceneBackground.CITY
-            "street" in lower || "রাস্তা" in lower -> SceneBackground.STREET
             "office" in lower || "অফিস" in lower -> SceneBackground.OFFICE
-            "classroom" in lower || "school" in lower || "স্কুল" in lower || "ক্লাস" in lower -> SceneBackground.CLASSROOM
+            "classroom" in lower || "ক্লাস" in lower -> SceneBackground.CLASSROOM
             "restaurant" in lower || "cafe" in lower || "রেস্টুরেন্ট" in lower || "হোটেল" in lower -> SceneBackground.RESTAURANT
             "kitchen" in lower || "রান্নাঘর" in lower -> SceneBackground.KITCHEN
             "bedroom" in lower || "বেডরুম" in lower || "ঘর" in lower -> SceneBackground.BEDROOM
@@ -68,8 +72,7 @@ class PlaceholderAiRepository : AiRepository {
             "rain" in lower || "বৃষ্টি" in lower -> SceneBackground.RAINY_SCENE
             "night" in lower || "রাত" in lower -> SceneBackground.NIGHT_SCENE
             "mountain" in lower || "পাহাড়" in lower -> SceneBackground.MOUNTAIN
-            "village" in lower || "গ্রাম" in lower -> SceneBackground.VILLAGE
-            else -> SceneBackground.PARK
+            else -> SceneBackground.BD_VILLAGE_HOME
         }
 
         val weather = when {
@@ -114,7 +117,7 @@ class PlaceholderAiRepository : AiRepository {
 
         var scene = StudioScene(
             id = UUID.randomUUID().toString(),
-            name = "এআই দৃশ্য: ${prompt.take(20).ifBlank { "নমুনা গল্প" }}",
+            name = "গল্পের দৃশ্য: ${prompt.take(20).ifBlank { "বাংলা কার্টুন" }}",
             background = background,
             lighting = lighting,
             weather = weather,
@@ -137,6 +140,17 @@ class PlaceholderAiRepository : AiRepository {
                     addFootsteps = true
                 )
             }
+            if ("ফোন" in lower || "মোবাইল" in lower || "phone" in lower || "কল" in lower) {
+                scene = AutomationEngine.applyPhoneCallAutomation(scene, first.id, 1800L)
+            }
+            if ("চা" in lower || "কফি" in lower || "tea" in lower) {
+                scene = AutomationEngine.applyTeaDrinkAutomation(scene, first.id, 2600L)
+            }
+            if ("রিকশা" in lower || "rickshaw" in lower) {
+                scene = AutomationEngine.applyDriveVehicleAutomation(scene, first.id, isRickshaw = true, startTimeMs = 0L)
+            } else if ("গাড়ি" in lower || "drive" in lower || "car" in lower) {
+                scene = AutomationEngine.applyDriveVehicleAutomation(scene, first.id, isRickshaw = false, startTimeMs = 0L)
+            }
             if ("run" in lower || "sprint" in lower || "দৌড়" in lower) {
                 scene = scene.copy(
                     motionClips = scene.motionClips + MotionClip(
@@ -158,7 +172,7 @@ class PlaceholderAiRepository : AiRepository {
                     )
                 )
             }
-            if ("eat" in lower || "খা" in lower) {
+            if ("eat" in lower || "ভাত" in lower || "খাব" in lower || "খা" in lower) {
                 scene = AutomationEngine.applyEatAutomation(scene, first.id, 2600L)
             }
         }

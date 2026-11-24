@@ -92,10 +92,14 @@ enum class BodyShape(val label: String) {
 enum class TopClothingStyle(val label: String) {
     TSHIRT("টি-শার্ট"),
     SHIRT("শার্ট"),
-    JACKET("স্টুডিও জ্যাকেট"),
+    JACKET("জ্যাকেট"),
     HOODIE("হুডি"),
     UNIFORM("স্কুল ইউনিফর্ম"),
     TRADITIONAL("পাঞ্জাবি / ঐতিহ্যবাহী"),
+    PUNJABI("সাদা / রঙিন পাঞ্জাবি"),
+    SAREE("শাড়ি ও ব্লাউজ"),
+    FOTUA("ফতুয়া ও গামছা"),
+    SALWAR_KAMEEZ("সালোয়ার কামিজ"),
     DRESS("কার্টুন ড্রেস")
 }
 
@@ -103,6 +107,9 @@ enum class BottomClothingStyle(val label: String) {
     PANTS("প্যান্ট"),
     SHORTS("শর্টস"),
     SKIRT("স্কার্ট"),
+    LUNGI("লুঙ্গি"),
+    PAJAMA("পায়জামা"),
+    SAREE_DRAPE("শাড়ি"),
     NONE("ফুল ড্রেস")
 }
 
@@ -117,8 +124,10 @@ enum class HatStyle(val label: String) {
     NONE("নেই"),
     CAP("ক্যাপ / টুপি"),
     BEANIE("উলের টুপি"),
-    FEDORA("ফেডোরা হ্যাট"),
-    HELMET("অ্যাডভেঞ্চার হেলমেট")
+    FEDORA("হ্যাট"),
+    HELMET("হেলমেট"),
+    TUPI("নামাজি টুপি"),
+    MATHAL("মাথাল (কৃষক)")
 }
 
 enum class GlassesStyle(val label: String) {

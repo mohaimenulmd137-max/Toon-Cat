@@ -69,6 +69,21 @@ enum class VoiceEmotion(
     ACTION_RUN("দৌড় / হাঁপানো মোশন", 1.08f, 1.26f, 6.0f, 0.92f, FacialExpression.NEUTRAL, MotionPreset.RUN)
 }
 
+enum class VoiceEffectFilter(
+    val label: String,
+    val pitchMultiplier: Float,
+    val speedMultiplier: Float,
+    val echoMix: Float = 0f
+) {
+    NATURAL("স্বাভাবিক আসল গলা", 1.00f, 1.00f, 0f),
+    MALE_DEEP("পুরুষ (গভীর / হিরো)", 0.78f, 0.97f, 0f),
+    FEMALE_SWEET("নারী (মিষ্টি)", 1.24f, 1.02f, 0f),
+    CHILD_CUTE("শিশু (কিউট)", 1.48f, 1.08f, 0f),
+    ELDER_WARM("বৃদ্ধ / দাদু", 0.74f, 0.88f, 0.08f),
+    CARTOON_FUNNY("কার্টুন ফানি", 1.68f, 1.15f, 0f),
+    ECHO_HALL("ইকো / নাটকীয়", 0.96f, 0.98f, 0.36f)
+}
+
 @JsonClass(generateAdapter = true)
 data class AudioClip(
     val id: String,
@@ -77,6 +92,7 @@ data class AudioClip(
     val sourceType: AudioSourceType,
     val assetId: String? = null,
     val filePath: String? = null,
+    val originalFilePath: String? = null,
     val characterInstanceId: String? = null,
     val startTimeMs: Long = 0L,
     val trimStartMs: Long = 0L,
@@ -92,6 +108,7 @@ data class AudioClip(
     val dialogueText: String = "",
     val voiceCharacter: VoiceCharacterType = VoiceCharacterType.MALE_ADULT,
     val voiceEmotion: VoiceEmotion = VoiceEmotion.NORMAL,
+    val voiceEffect: VoiceEffectFilter = VoiceEffectFilter.NATURAL,
     val trackRow: Int = 0
 ) {
     val effectiveDurationMs: Long

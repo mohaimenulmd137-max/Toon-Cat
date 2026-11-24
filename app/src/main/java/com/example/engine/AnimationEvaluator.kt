@@ -12,6 +12,7 @@ import com.example.domain.model.Keyframe
 import com.example.domain.model.KeyframeTargetType
 import com.example.domain.model.MotionClip
 import com.example.domain.model.MotionPreset
+import com.example.domain.model.PropType
 import com.example.domain.model.RigJoint
 import com.example.domain.model.SceneCharacterInstance
 import com.example.domain.model.SceneProp
@@ -219,27 +220,39 @@ object AnimationEvaluator {
         if (hostId != null) {
             val host = evalChars.find { it.instance.id == hostId }
             if (host != null) {
-                // Approximate normalized offset relative to host character position
                 val handOffset = when (prop.attachJoint) {
                     RigJoint.HAND_R -> (if (host.facingRight) 0.055f else -0.055f) * host.scale to -0.14f * host.scale
                     RigJoint.HAND_L -> (if (host.facingRight) -0.045f else 0.045f) * host.scale to -0.14f * host.scale
                     RigJoint.HEAD -> 0f to -0.29f * host.scale
+                    RigJoint.HIP -> 0f to -0.02f * host.scale
                     else -> 0.04f * host.scale to -0.12f * host.scale
                 }
-                // Check if host is eating (bring prop close to mouth!)
-                val eatMotion = scene.motionClips.find {
-                    it.characterInstanceId == host.instance.id &&
-                        (it.preset == MotionPreset.EAT || it.preset == MotionPreset.DRINK) &&
-                        timeMs in it.startTimeMs..it.endTimeMs
+                val activeHostMotion = scene.motionClips.lastOrNull {
+                    it.characterInstanceId == host.instance.id && timeMs in it.startTimeMs..it.endTimeMs
                 }
-                if (eatMotion != null) {
-                    val cycle = ((sin(((timeMs - eatMotion.startTimeMs) / 450.0) * PI) + 1.0) * 0.5).toFloat()
-                    px = host.x + (if (host.facingRight) 0.03f else -0.03f) * (1f - cycle * 0.5f)
-                    py = host.y - (0.16f + cycle * 0.09f) * host.scale
-                    pRot += (if (host.facingRight) -25f else 25f) * cycle
-                } else {
-                    px = host.x + handOffset.first
-                    py = host.y + handOffset.second
+                when {
+                    prop.attachJoint == RigJoint.HIP || prop.type == PropType.VEHICLE || prop.type == PropType.RICKSHAW || prop.type == PropType.BICYCLE -> {
+                        // Vehicle/Rickshaw moves smoothly under the seated character
+                        px = host.x
+                        py = host.y + 0.01f * host.scale
+                        pRot += host.rotationDeg * 0.25f
+                    }
+                    activeHostMotion != null && (activeHostMotion.preset == MotionPreset.EAT || activeHostMotion.preset == MotionPreset.DRINK) -> {
+                        val cycle = ((sin(((timeMs - activeHostMotion.startTimeMs) / 450.0) * PI) + 1.0) * 0.5).toFloat()
+                        px = host.x + (if (host.facingRight) 0.03f else -0.03f) * (1f - cycle * 0.5f)
+                        py = host.y - (0.16f + cycle * 0.09f) * host.scale
+                        pRot += (if (host.facingRight) -25f else 25f) * cycle
+                    }
+                    activeHostMotion != null && activeHostMotion.preset == MotionPreset.TALK_ON_PHONE && prop.type == PropType.PHONE -> {
+                        // Hold phone right up to the character's ear
+                        px = host.x + (if (host.facingRight) 0.042f else -0.042f) * host.scale
+                        py = host.y - 0.27f * host.scale
+                        pRot += if (host.facingRight) -18f else 18f
+                    }
+                    else -> {
+                        px = host.x + handOffset.first
+                        py = host.y + handOffset.second
+                    }
                 }
             }
         }
@@ -715,6 +728,78 @@ object AnimationEvaluator {
                         RigJoint.UPPER_LEG_R to -step
                     ),
                     deltaX = progress * 0.14f * dir
+                )
+            }
+            MotionPreset.TALK_ON_PHONE -> {
+                val nod = sin(elapsedSec * 4.2f) * 5f
+                val gesture = sin(elapsedSec * 3.1f) * 14f
+                MotionDelta(
+                    pose = mapPose(
+                        RigJoint.UPPER_ARM_R to -95f,
+                        RigJoint.LOWER_ARM_R to -118f,
+                        RigJoint.HAND_R to -10f,
+                        RigJoint.UPPER_ARM_L to (22f + gesture),
+                        RigJoint.LOWER_ARM_L to (-32f - gesture * 0.4f),
+                        RigJoint.HEAD to (-6f + nod)
+                    )
+                )
+            }
+            MotionPreset.DRIVE_CAR -> {
+                val steer = sin(elapsedSec * 3.2f) * 10f
+                val roadBump = sin(elapsedSec * 11f) * 0.008f
+                MotionDelta(
+                    pose = mapPose(
+                        RigJoint.UPPER_LEG_L to 80f,
+                        RigJoint.LOWER_LEG_L to -80f,
+                        RigJoint.UPPER_LEG_R to 78f,
+                        RigJoint.LOWER_LEG_R to -78f,
+                        RigJoint.TORSO to -4f,
+                        RigJoint.UPPER_ARM_L to (-58f + steer),
+                        RigJoint.LOWER_ARM_L to -28f,
+                        RigJoint.UPPER_ARM_R to (-58f - steer),
+                        RigJoint.LOWER_ARM_R to -28f,
+                        RigJoint.HEAD to (sin(elapsedSec * 2.5f) * 3f)
+                    ).copy(hipOffsetY = 0.08f + roadBump),
+                    deltaX = progress * 0.34f * dir,
+                    overrideFacing = dir > 0
+                )
+            }
+            MotionPreset.RIDE_RICKSHAW -> {
+                val pedal = sin(elapsedSec * 6.5f) * 28f
+                val roadBump = abs(sin(elapsedSec * 6.5f)) * 0.01f
+                MotionDelta(
+                    pose = mapPose(
+                        RigJoint.UPPER_LEG_L to (70f + pedal),
+                        RigJoint.LOWER_LEG_L to (-65f - pedal * 0.5f),
+                        RigJoint.UPPER_LEG_R to (70f - pedal),
+                        RigJoint.LOWER_LEG_R to (-65f + pedal * 0.5f),
+                        RigJoint.TORSO to 14f,
+                        RigJoint.UPPER_ARM_L to -55f,
+                        RigJoint.LOWER_ARM_L to -25f,
+                        RigJoint.UPPER_ARM_R to -55f,
+                        RigJoint.LOWER_ARM_R to -25f,
+                        RigJoint.HEAD to -8f
+                    ).copy(hipOffsetY = 0.06f - roadBump),
+                    deltaX = progress * 0.28f * dir,
+                    overrideFacing = dir > 0
+                )
+            }
+            MotionPreset.WORK_TYPING -> {
+                val typeL = sin(elapsedSec * 9.5f) * 12f
+                val typeR = cos(elapsedSec * 9.5f) * 12f
+                MotionDelta(
+                    pose = mapPose(
+                        RigJoint.UPPER_LEG_L to 80f,
+                        RigJoint.LOWER_LEG_L to -80f,
+                        RigJoint.UPPER_LEG_R to 78f,
+                        RigJoint.LOWER_LEG_R to -78f,
+                        RigJoint.TORSO to 12f,
+                        RigJoint.HEAD to 14f,
+                        RigJoint.UPPER_ARM_L to (-42f + typeL * 0.4f),
+                        RigJoint.LOWER_ARM_L to (-65f + typeL),
+                        RigJoint.UPPER_ARM_R to (-42f + typeR * 0.4f),
+                        RigJoint.LOWER_ARM_R to (-65f + typeR)
+                    ).copy(hipOffsetY = 0.11f)
                 )
             }
             MotionPreset.EAT, MotionPreset.DRINK -> {

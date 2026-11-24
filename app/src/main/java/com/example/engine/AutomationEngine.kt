@@ -120,7 +120,7 @@ object AutomationEngine {
     }
 
     /**
-     * Eating Automation: Attaches Food prop to character's hand, triggers Eat animation + chewing SFX.
+     * Eating Automation: Attaches Food/Rice Plate prop to character's hand, triggers Eat animation + chewing SFX.
      */
     fun applyEatAutomation(
         scene: StudioScene,
@@ -129,10 +129,12 @@ object AutomationEngine {
     ): StudioScene {
         val foodProp = SceneProp(
             id = UUID.randomUUID().toString(),
-            type = PropType.FOOD,
-            label = "খাবার",
+            type = PropType.RICE_PLATE,
+            label = "খাবার / ভাত",
             attachedCharacterId = characterInstanceId,
-            attachJoint = RigJoint.HAND_R
+            attachJoint = RigJoint.HAND_R,
+            startTimeMs = startTimeMs,
+            endTimeMs = startTimeMs + 2400L
         )
         val eatMotion = MotionClip(
             id = UUID.randomUUID().toString(),
@@ -157,6 +159,109 @@ object AutomationEngine {
             props = scene.props + foodProp,
             motionClips = scene.motionClips + eatMotion,
             audioClips = scene.audioClips + eatAudio
+        )
+    }
+
+    /**
+     * Mobile Phone Call Automation: Holds phone to ear + realistic talking nod & gesture.
+     */
+    fun applyPhoneCallAutomation(
+        scene: StudioScene,
+        characterInstanceId: String,
+        startTimeMs: Long,
+        durationMs: Long = 2600L
+    ): StudioScene {
+        val phoneProp = SceneProp(
+            id = UUID.randomUUID().toString(),
+            type = PropType.PHONE,
+            label = "মোবাইল ফোন",
+            scale = 0.85f,
+            attachedCharacterId = characterInstanceId,
+            attachJoint = RigJoint.HAND_R,
+            startTimeMs = startTimeMs,
+            endTimeMs = startTimeMs + durationMs
+        )
+        val phoneMotion = MotionClip(
+            id = UUID.randomUUID().toString(),
+            characterInstanceId = characterInstanceId,
+            preset = MotionPreset.TALK_ON_PHONE,
+            startTimeMs = startTimeMs,
+            endTimeMs = startTimeMs + durationMs
+        )
+        return scene.copy(
+            props = scene.props + phoneProp,
+            motionClips = scene.motionClips + phoneMotion
+        )
+    }
+
+    /**
+     * Tea Drinking Automation: Attaches tea cup to hand + brings cup up to mouth smoothly.
+     */
+    fun applyTeaDrinkAutomation(
+        scene: StudioScene,
+        characterInstanceId: String,
+        startTimeMs: Long,
+        durationMs: Long = 2200L
+    ): StudioScene {
+        val cupProp = SceneProp(
+            id = UUID.randomUUID().toString(),
+            type = PropType.TEA_CUP,
+            label = "চায়ের কাপ",
+            scale = 0.85f,
+            attachedCharacterId = characterInstanceId,
+            attachJoint = RigJoint.HAND_R,
+            startTimeMs = startTimeMs,
+            endTimeMs = startTimeMs + durationMs
+        )
+        val drinkMotion = MotionClip(
+            id = UUID.randomUUID().toString(),
+            characterInstanceId = characterInstanceId,
+            preset = MotionPreset.DRINK,
+            startTimeMs = startTimeMs,
+            endTimeMs = startTimeMs + durationMs
+        )
+        return scene.copy(
+            props = scene.props + cupProp,
+            motionClips = scene.motionClips + drinkMotion
+        )
+    }
+
+    /**
+     * Driving / Riding Vehicle Automation: Character sits on car/rickshaw and moves together!
+     */
+    fun applyDriveVehicleAutomation(
+        scene: StudioScene,
+        characterInstanceId: String,
+        isRickshaw: Boolean,
+        startTimeMs: Long,
+        durationMs: Long = 3000L,
+        direction: Int = 1
+    ): StudioScene {
+        val propType = if (isRickshaw) PropType.RICKSHAW else PropType.VEHICLE
+        val preset = if (isRickshaw) MotionPreset.RIDE_RICKSHAW else MotionPreset.DRIVE_CAR
+        val vehicleProp = SceneProp(
+            id = UUID.randomUUID().toString(),
+            type = propType,
+            label = propType.label,
+            scale = 1.65f,
+            colorHex = if (isRickshaw) 0xFF10B981 else 0xFF0EA5E9,
+            attachedCharacterId = characterInstanceId,
+            attachJoint = RigJoint.HIP,
+            zOrder = 1,
+            startTimeMs = startTimeMs,
+            endTimeMs = startTimeMs + durationMs
+        )
+        val driveMotion = MotionClip(
+            id = UUID.randomUUID().toString(),
+            characterInstanceId = characterInstanceId,
+            preset = preset,
+            startTimeMs = startTimeMs,
+            endTimeMs = startTimeMs + durationMs,
+            direction = direction
+        )
+        return scene.copy(
+            props = scene.props + vehicleProp,
+            motionClips = scene.motionClips + driveMotion
         )
     }
 

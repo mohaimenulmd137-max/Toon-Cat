@@ -316,9 +316,9 @@ class ProjectRepository(private val dao: StudioDao) {
                 hair = HairConfig(HairStyle.LONG, 0xFF1F1715, HairAccessory.HAIRPIN, 0xFFF59E0B),
                 body = BodyConfig(heightScale = 0.97f, bodyShape = BodyShape.BALANCED),
                 clothing = ClothingConfig(
-                    topStyle = TopClothingStyle.TRADITIONAL,
+                    topStyle = TopClothingStyle.SAREE,
                     topColorHex = 0xFFEC4899,
-                    bottomStyle = BottomClothingStyle.SKIRT,
+                    bottomStyle = BottomClothingStyle.SAREE_DRAPE,
                     bottomColorHex = 0xFF9D174D,
                     shoesStyle = ShoesStyle.SANDALS,
                     shoesColorHex = 0xFFFBBF24,
@@ -329,7 +329,7 @@ class ProjectRepository(private val dao: StudioDao) {
             ),
             CartoonCharacter(
                 id = "char_dada",
-                name = "দাদু",
+                name = "হাজী দাদু",
                 style = CharacterStyle.CLASSIC_TOON,
                 face = FaceConfig(
                     faceShape = FaceShape.ROUND,
@@ -341,12 +341,13 @@ class ProjectRepository(private val dao: StudioDao) {
                 hair = HairConfig(HairStyle.SHORT, 0xFFE2E8F0),
                 body = BodyConfig(heightScale = 0.95f, widthScale = 1.08f, bodyShape = BodyShape.ROUND),
                 clothing = ClothingConfig(
-                    topStyle = TopClothingStyle.TRADITIONAL,
+                    topStyle = TopClothingStyle.PUNJABI,
                     topColorHex = 0xFFF8FAFC,
-                    bottomStyle = BottomClothingStyle.PANTS,
-                    bottomColorHex = 0xFF64748B,
+                    bottomStyle = BottomClothingStyle.PAJAMA,
+                    bottomColorHex = 0xFFE2E8F0,
                     shoesStyle = ShoesStyle.SANDALS,
                     shoesColorHex = 0xFF78350F,
+                    hatStyle = HatStyle.TUPI,
                     glassesStyle = GlassesStyle.ROUND
                 ),
                 isTemplate = true
@@ -446,25 +447,144 @@ class ProjectRepository(private val dao: StudioDao) {
                     hatColorHex = 0xFFF8FAFC
                 ),
                 isTemplate = true
+            ),
+            CartoonCharacter(
+                id = "char_farmer_rahim",
+                name = "রহিম চাচা (গ্রাম্য কৃষক)",
+                style = CharacterStyle.CLASSIC_TOON,
+                face = FaceConfig(
+                    faceShape = FaceShape.OVAL,
+                    skinToneHex = 0xFFC68652,
+                    eyeShape = EyeShape.ALMOND,
+                    eyeColorHex = 0xFF1E293B,
+                    eyebrowStyle = EyebrowStyle.THICK
+                ),
+                hair = HairConfig(HairStyle.SHORT, 0xFF1F2937),
+                body = BodyConfig(heightScale = 1.02f, widthScale = 1.05f, bodyShape = BodyShape.BALANCED),
+                clothing = ClothingConfig(
+                    topStyle = TopClothingStyle.FOTUA,
+                    topColorHex = 0xFFFDE68A,
+                    bottomStyle = BottomClothingStyle.LUNGI,
+                    bottomColorHex = 0xFF1D4ED8,
+                    shoesStyle = ShoesStyle.SANDALS,
+                    shoesColorHex = 0xFF78350F,
+                    hatStyle = HatStyle.MATHAL,
+                    hatColorHex = 0xFFD97706
+                ),
+                isTemplate = true
+            ),
+            CartoonCharacter(
+                id = "char_rickshaw_karim",
+                name = "করিম ভাই (রিকশাচালক)",
+                style = CharacterStyle.MODERN_2D,
+                face = FaceConfig(
+                    faceShape = FaceShape.SQUARE,
+                    skinToneHex = 0xFFB8784A,
+                    eyeShape = EyeShape.ROUND,
+                    eyeColorHex = 0xFF0F172A
+                ),
+                hair = HairConfig(HairStyle.CURLY, 0xFF111827),
+                body = BodyConfig(heightScale = 1.03f, bodyShape = BodyShape.ATHLETIC),
+                clothing = ClothingConfig(
+                    topStyle = TopClothingStyle.FOTUA,
+                    topColorHex = 0xFF0EA5E9,
+                    bottomStyle = BottomClothingStyle.LUNGI,
+                    bottomColorHex = 0xFF0F766E,
+                    shoesStyle = ShoesStyle.SANDALS,
+                    shoesColorHex = 0xFF334155
+                ),
+                isTemplate = true
+            ),
+            CartoonCharacter(
+                id = "char_tea_mamun",
+                name = "মামুন ভাই (চায়ের দোকানি)",
+                style = CharacterStyle.CLASSIC_TOON,
+                face = FaceConfig(
+                    faceShape = FaceShape.ROUND,
+                    skinToneHex = 0xFFD2966B,
+                    eyeShape = EyeShape.ROUND,
+                    eyeColorHex = 0xFF1E293B
+                ),
+                hair = HairConfig(HairStyle.SHORT, 0xFF1E293B),
+                body = BodyConfig(heightScale = 0.98f, widthScale = 1.12f, bodyShape = BodyShape.ROUND),
+                clothing = ClothingConfig(
+                    topStyle = TopClothingStyle.SHIRT,
+                    topColorHex = 0xFFF97316,
+                    bottomStyle = BottomClothingStyle.LUNGI,
+                    bottomColorHex = 0xFF7C2D12,
+                    shoesStyle = ShoesStyle.SANDALS,
+                    shoesColorHex = 0xFF451A03
+                ),
+                isTemplate = true
+            ),
+            CartoonCharacter(
+                id = "char_student_rafiq",
+                name = "রফিক (স্কুল ছাত্র)",
+                style = CharacterStyle.MODERN_2D,
+                face = FaceConfig(
+                    faceShape = FaceShape.OVAL,
+                    headSize = 1.08f,
+                    skinToneHex = 0xFFE5A97C,
+                    eyeShape = EyeShape.WIDE,
+                    eyeColorHex = 0xFF1E293B
+                ),
+                hair = HairConfig(HairStyle.STRAIGHT, 0xFF0F172A),
+                body = BodyConfig(heightScale = 0.86f, headToBodyRatio = 1.15f, bodyShape = BodyShape.SLIM),
+                clothing = ClothingConfig(
+                    topStyle = TopClothingStyle.UNIFORM,
+                    topColorHex = 0xFFF8FAFC,
+                    bottomStyle = BottomClothingStyle.PANTS,
+                    bottomColorHex = 0xFF1E3A8A,
+                    shoesStyle = ShoesStyle.SNEAKERS,
+                    shoesColorHex = 0xFFFFFFFF,
+                    accessory = BodyAccessory.BACKPACK,
+                    accessoryColorHex = 0xFF10B981
+                ),
+                isTemplate = true
+            ),
+            CartoonCharacter(
+                id = "char_student_tuli",
+                name = "তুলি (স্কুল ছাত্রী)",
+                style = CharacterStyle.ANIME_LITE,
+                face = FaceConfig(
+                    faceShape = FaceShape.HEART,
+                    headSize = 1.08f,
+                    skinToneHex = 0xFFF0BE97,
+                    eyeShape = EyeShape.ANIME,
+                    eyeColorHex = 0xFF4C1D95
+                ),
+                hair = HairConfig(HairStyle.PONYTAIL, 0xFF1E1B18, HairAccessory.RIBBON, 0xFFEF4444),
+                body = BodyConfig(heightScale = 0.84f, headToBodyRatio = 1.15f, bodyShape = BodyShape.SLIM),
+                clothing = ClothingConfig(
+                    topStyle = TopClothingStyle.SALWAR_KAMEEZ,
+                    topColorHex = 0xFF047857,
+                    bottomStyle = BottomClothingStyle.PAJAMA,
+                    bottomColorHex = 0xFFF8FAFC,
+                    shoesStyle = ShoesStyle.SANDALS,
+                    shoesColorHex = 0xFF1E293B,
+                    accessory = BodyAccessory.BACKPACK,
+                    accessoryColorHex = 0xFFF59E0B
+                ),
+                isTemplate = true
             )
         )
 
         fun defaultStarterProjects(): List<AnimationProject> {
-            val leoInst = SceneCharacterInstance("inst_leo", "char_leo", "লিও", x = 0.30f, y = 0.77f, facingRight = true, zOrder = 2)
-            val mayaInst = SceneCharacterInstance("inst_maya", "char_maya", "মায়া", x = 0.68f, y = 0.77f, facingRight = false, zOrder = 3)
-            val line1 = "হাই মায়া! আমাদের কার্টুন পর্ব শুট করতে প্রস্তুত?"
-            val line2 = "হ্যাঁ একদম! ক্যামেরা ২ চালু হচ্ছে!"
+            val leoInst = SceneCharacterInstance("inst_leo", "char_farmer_rahim", "রহিম চাচা", x = 0.30f, y = 0.77f, facingRight = true, zOrder = 2)
+            val mayaInst = SceneCharacterInstance("inst_maya", "char_nadia", "আমেনা", x = 0.68f, y = 0.77f, facingRight = false, zOrder = 3)
+            val line1 = "কেমন আছো? সকালের চা খাওয়া হয়েছে?"
+            val line2 = "হ্যাঁ, গরম চা নিয়ে আসছি!"
 
             val parkScene = StudioScene(
                 id = "scene_park_1",
-                name = "দৃশ্য ১: পার্কে দেখা",
-                background = SceneBackground.PARK,
+                name = "দৃশ্য ১: বাংলার গ্রাম ও উঠান",
+                background = SceneBackground.BD_VILLAGE_HOME,
                 lighting = LightingMood.DAYLIGHT,
                 durationMs = 8000L,
                 characters = listOf(leoInst, mayaInst),
                 props = listOf(
-                    SceneProp("prop_bag", PropType.BAG, "আঁকার ব্যাগ", x = 0.16f, y = 0.76f, colorHex = 0xFFFFB300, zOrder = 1),
-                    SceneProp("prop_cup", PropType.CUP, "কফি কাপ", x = 0.61f, y = 0.62f, attachedCharacterId = mayaInst.id, zOrder = 4)
+                    SceneProp("prop_bag", PropType.PHONE, "মোবাইল ফোন", x = 0.35f, y = 0.56f, attachedCharacterId = leoInst.id, zOrder = 4),
+                    SceneProp("prop_cup", PropType.TEA_CUP, "চায়ের কাপ", x = 0.61f, y = 0.62f, attachedCharacterId = mayaInst.id, zOrder = 4)
                 ),
                 motionClips = listOf(
                     MotionClip("mc1", leoInst.id, MotionPreset.WALK, 0L, 2200L, autoFootsteps = true),
