@@ -42,10 +42,24 @@ object VideoExportEngine {
     private const val VIDEO_MIME = MediaFormat.MIMETYPE_VIDEO_AVC
     private const val AUDIO_MIME = MediaFormat.MIMETYPE_AUDIO_AAC
 
-    /**
-     * Renders every animation frame via StageRenderer onto an offscreen Bitmap, encodes to H.264 AVC,
-     * mixes all enabled Dialogue/SFX/Music tracks into AAC, and muxes a real playable MP4 file.
-     */
+    data class SceneMovieSegment(
+        val scene: StudioScene,
+        val startMs: Long,
+        val endMs: Long
+    ) {
+        val durationMs: Long get() = (endMs - startMs).coerceAtLeast(1000L)
+    }
+
+    fun buildSceneTimelineRanges(scenes: List<StudioScene>): List<SceneMovieSegment> {
+        var cursor = 0L
+        return scenes.map { sc ->
+            val dur = sc.durationMs.coerceAtLeast(1000L)
+            val seg = SceneMovieSegment(sc, cursor, cursor + dur)
+            cursor += dur
+            seg
+        }
+    }
+
     suspend fun exportSceneToMp4(
         context: Context,
         scene: StudioScene,
@@ -55,19 +69,45 @@ object VideoExportEngine {
         customBgBitmap: Bitmap?,
         projectName: String,
         onProgress: (Float, String) -> Unit
+    ): ExportResult = exportScenesToMp4(
+        context = context,
+        scenes = listOf(scene),
+        characterLibrary = characterLibrary,
+        audioEngine = audioEngine,
+        config = config,
+        customBgBitmap = customBgBitmap,
+        projectName = projectName,
+        onProgress = onProgress
+    )
+
+    /**
+     * Renders every animation frame across one or multiple scenes sequentially via StageRenderer
+     * onto an offscreen Bitmap, encodes to H.264 AVC, mixes Dialogue/SFX/Music into AAC,
+     * and muxes a real playable MP4 movie file.
+     */
+    suspend fun exportScenesToMp4(
+        context: Context,
+        scenes: List<StudioScene>,
+        characterLibrary: Map<String, CartoonCharacter>,
+        audioEngine: AudioEngine,
+        config: ExportConfig,
+        customBgBitmap: Bitmap?,
+        projectName: String,
+        onProgress: (Float, String) -> Unit
     ): ExportResult = withContext(Dispatchers.Default) {
+        val segments = buildSceneTimelineRanges(scenes.ifEmpty { return@withContext throw IllegalArgumentException("কোনো দৃশ্য পাওয়া যায়নি") })
         val (width, height) = config.computeVideoDimensions()
         val fps = config.fps.coerceIn(15, 60)
-        val durationMs = scene.durationMs.coerceAtLeast(1000L)
+        val durationMs = (segments.lastOrNull()?.endMs ?: 1000L).coerceAtLeast(1000L)
         val totalFrames = ((durationMs * fps) / 1000L).toInt().coerceAtLeast(fps)
 
         val exportDir = File(context.filesDir, "exports").apply { mkdirs() }
         val safeName = projectName.replace(Regex("[^A-Za-z0-9_-]"), "_").ifBlank { "ToonMotion" }
         val outFile = File(exportDir, "${safeName}_${System.currentTimeMillis()}.mp4")
 
-        onProgress(0.02f, "অডিও ট্র্যাক মিক্স করা হচ্ছে...")
-        val mixedPcm = audioEngine.mixSceneAudioToPcm(
-            scene = scene,
+        onProgress(0.02f, "${segments.size}টি দৃশ্যের অডিও মিক্স করা হচ্ছে...")
+        val mixedPcm = audioEngine.mixScenesAudioToPcm(
+            scenes = segments.map { it.scene },
             includeDialogue = config.includeDialogue,
             includeSfx = config.includeSfx,
             includeMusic = config.includeMusic,
@@ -115,7 +155,6 @@ object VideoExportEngine {
             val vInfo = MediaCodec.BufferInfo()
             val aInfo = MediaCodec.BufferInfo()
 
-            // First wait for format changes by priming first few frames & audio buffers
             var frameIndex = 0
             var videoInputDone = false
             var videoOutputDone = false
@@ -131,14 +170,13 @@ object VideoExportEngine {
                 }
                 .toMap()
 
-            val renderOptions = StageRenderer.RenderOptions(
-                showRigOverlay = false,
-                showCameraGuides = false,
-                customBackgroundBitmap = customBgBitmap,
-                customCharacterBitmaps = customCharBitmaps
-            )
+            val sceneCustomBgs = segments.mapNotNull { it.scene.customBackgroundUri }
+                .distinct()
+                .mapNotNull { path ->
+                    runCatching { android.graphics.BitmapFactory.decodeFile(path) }.getOrNull()?.let { path to it }
+                }
+                .toMap()
 
-            // Phase 1: Drain format headers first if needed, or buffer encoded frames until both tracks added
             val pendingVideoSamples = ArrayList<Pair<ByteArray, MediaCodec.BufferInfo>>()
             val pendingAudioSamples = ArrayList<Pair<ByteArray, MediaCodec.BufferInfo>>()
 
@@ -168,16 +206,24 @@ object VideoExportEngine {
                             videoEncoder.queueInputBuffer(inIdx, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             videoInputDone = true
                         } else {
-                            val timeMs = ((frameIndex.toLong() * durationMs) / totalFrames).coerceAtMost(durationMs)
-                            val eval = AnimationEvaluator.evaluateScene(scene, timeMs)
+                            val movieTimeMs = ((frameIndex.toLong() * durationMs) / totalFrames).coerceAtMost(durationMs)
+                            val seg = segments.firstOrNull { movieTimeMs < it.endMs } ?: segments.last()
+                            val localTimeMs = (movieTimeMs - seg.startMs).coerceIn(0L, seg.durationMs)
+                            val eval = AnimationEvaluator.evaluateScene(seg.scene, localTimeMs)
+                            val bgBmp = seg.scene.customBackgroundUri?.let { sceneCustomBgs[it] } ?: customBgBitmap
                             StageRenderer.drawScene(
                                 canvas = frameCanvas,
                                 width = width.toFloat(),
                                 height = height.toFloat(),
-                                scene = scene,
+                                scene = seg.scene,
                                 evaluated = eval,
                                 characterLibrary = characterLibrary,
-                                options = renderOptions
+                                options = StageRenderer.RenderOptions(
+                                    showRigOverlay = false,
+                                    showCameraGuides = false,
+                                    customBackgroundBitmap = bgBmp,
+                                    customCharacterBitmaps = customCharBitmaps
+                                )
                             )
                             frameBitmap.getPixels(argbPixels, 0, width, 0, 0, width, height)
                             val inputImage = videoEncoder.getInputImage(inIdx)
@@ -195,7 +241,7 @@ object VideoExportEngine {
                             }
                             frameIndex++
                             val pct = 0.05f + 0.90f * (frameIndex.toFloat() / totalFrames)
-                            onProgress(pct, "ফ্রেম রেন্ডার হচ্ছে $frameIndex / $totalFrames ($fps ফ্রেম/সে.)")
+                            onProgress(pct, "দৃশ্য ${segments.indexOf(seg) + 1}/${segments.size} • ফ্রেম $frameIndex/$totalFrames")
                         }
                     }
                 }

@@ -365,7 +365,7 @@ fun AudioStudioPanel(
                             mutableStateOf(onSuggestVoiceEmotion(selectedCharInstanceId))
                         }
                         var syncExpr by remember { mutableStateOf(true) }
-                        var syncMotion by remember { mutableStateOf(true) }
+                        var syncMotion by remember { mutableStateOf(false) }
                         var pitch by remember { mutableFloatStateOf(1.0f) }
                         var speed by remember { mutableFloatStateOf(1.0f) }
                         val targetCharName = scene.characters.find { it.id == selectedCharInstanceId }?.name ?: "নির্বাচিত চরিত্র"

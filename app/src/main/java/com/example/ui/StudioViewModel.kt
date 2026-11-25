@@ -55,9 +55,11 @@ import com.example.domain.model.WeatherType
 import com.example.engine.AnimationEvaluator
 import com.example.engine.AudioEngine
 import com.example.engine.AutomationEngine
+import com.example.engine.EasyStoryScriptParser
 import com.example.engine.ExportResult
 import com.example.engine.ProceduralSoundSynthesizer
 import com.example.engine.ProceduralVoice
+import com.example.engine.ReadyStoryTemplate
 import com.example.engine.RigSolver
 import com.example.engine.SoundLibraryCatalog
 import com.example.engine.VideoExportEngine
@@ -576,6 +578,116 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         showNotice("টেমপ্লেট থেকে নতুন দৃশ্য যোগ করা হয়েছে")
     }
 
+    fun duplicateActiveScene() {
+        val proj = _activeProject.value ?: return
+        val scene = proj.activeScene ?: return
+        val cloned = scene.copy(
+            id = UUID.randomUUID().toString(),
+            name = "${scene.name} (কপি)"
+        )
+        val insertIdx = (proj.activeSceneIndex + 1).coerceIn(0, proj.scenes.size)
+        val nextScenes = proj.scenes.toMutableList().apply { add(insertIdx, cloned) }
+        updateActiveProject { it.copy(scenes = nextScenes, activeSceneIndex = insertIdx) }
+        _playheadMs.value = 0L
+        _selectedCharInstanceId.value = cloned.characters.firstOrNull()?.id
+        showNotice("নতুন দৃশ্য \"${cloned.name}\" যোগ হয়েছে")
+    }
+
+    fun deleteSceneAt(index: Int) {
+        val proj = _activeProject.value ?: return
+        if (proj.scenes.size <= 1) {
+            showNotice("কমপক্ষে ১টি দৃশ্য থাকতে হবে")
+            return
+        }
+        if (index !in proj.scenes.indices) return
+        val nextScenes = proj.scenes.toMutableList().apply { removeAt(index) }
+        val nextIdx = proj.activeSceneIndex.coerceIn(0, nextScenes.lastIndex)
+        updateActiveProject { it.copy(scenes = nextScenes, activeSceneIndex = nextIdx) }
+        _playheadMs.value = 0L
+        val active = nextScenes[nextIdx]
+        _selectedCharInstanceId.value = active.characters.firstOrNull()?.id
+        loadCustomBgFromUri(active.customBackgroundUri)
+        showNotice("দৃশ্য মুছে ফেলা হয়েছে")
+    }
+
+    fun applyReadyStoryTemplate(template: ReadyStoryTemplate) {
+        viewModelScope.launch {
+            val proj = template.toAnimationProject(characters.value, settings.value.defaultFps)
+            projectRepo.saveProject(proj)
+            loadProjectIntoEditor(proj)
+            _currentDestination.value = StudioDestination.ANIMATION_STUDIO
+            showNotice("\"${template.title}\" রেডিমেট টেমপ্লেট চালু হয়েছে")
+        }
+    }
+
+    fun appendReadySceneFromTemplate(template: ReadyStoryTemplate) {
+        val built = template.scenesBuilder(characters.value.associateBy { it.id }).firstOrNull() ?: return
+        val cloned = built.copy(id = UUID.randomUUID().toString())
+        updateActiveProject { proj ->
+            proj.copy(scenes = proj.scenes + cloned, activeSceneIndex = proj.scenes.size)
+        }
+        _playheadMs.value = 0L
+        _selectedCharInstanceId.value = cloned.characters.firstOrNull()?.id
+        loadCustomBgFromUri(cloned.customBackgroundUri)
+        showNotice("\"${template.title}\" থেকে নতুন দৃশ্য যোগ হয়েছে")
+    }
+
+    fun applyEasyStoryToActiveScene(
+        background: SceneBackground,
+        lighting: LightingMood,
+        weather: WeatherType,
+        autoCameraOnSpeakers: Boolean,
+        scriptText: String
+    ) {
+        val scene = _activeProject.value?.activeScene ?: return
+        val charMap = characters.value.associateBy { it.id }
+        val parsedLines = EasyStoryScriptParser.parseScriptLines(
+            scriptText = scriptText,
+            characters = scene.characters,
+            characterLibrary = charMap,
+            startOffsetMs = 500L
+        )
+        viewModelScope.launch {
+            val generatedClips = mutableListOf<AudioClip>()
+            var cursorMs = 500L
+            for (line in parsedLines) {
+                val clip = audioEngine.synthesizeDialogueToClip(
+                    characterInstanceId = line.characterInstanceId,
+                    text = line.text,
+                    startTimeMs = cursorMs,
+                    pitch = 1.0f,
+                    speed = 1.0f,
+                    voiceCharacter = line.voiceCharacter,
+                    voiceEmotion = line.voiceEmotion
+                ).copy(trackRow = 0)
+                generatedClips.add(clip)
+                cursorMs = clip.endTimeMs + 280L
+            }
+
+            updateActiveScene { s ->
+                // Preserve non-TTS clips (music, sfx, recorded/imported external voices)
+                val keptAudio = s.audioClips.filterNot {
+                    it.trackType == AudioTrackType.DIALOGUE && it.sourceType == AudioSourceType.TTS_OFFLINE
+                }
+                val combinedAudio = keptAudio + generatedClips
+                val maxAudioEnd = combinedAudio.maxOfOrNull { it.endTimeMs } ?: s.durationMs
+                val maxMotionEnd = s.motionClips.maxOfOrNull { it.endTimeMs } ?: 0L
+                val targetDur = maxOf(s.durationMs, maxAudioEnd + 400L, maxMotionEnd + 300L, 4500L)
+                    .coerceIn(3000L, 180_000L)
+                val updated = s.copy(
+                    background = background,
+                    lighting = lighting,
+                    weather = weather,
+                    audioClips = combinedAudio,
+                    durationMs = targetDur
+                )
+                if (autoCameraOnSpeakers) AutomationEngine.generateAutoCameraCuts(updated) else updated
+            }
+            _playheadMs.value = 0L
+            showNotice("সহজ গল্পের দৃশ্য, ভয়েস ও লিপ-সিঙ্ক তৈরি হয়েছে!")
+        }
+    }
+
     fun updateSceneEnvironment(
         background: SceneBackground? = null,
         lighting: LightingMood? = null,
@@ -589,7 +701,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 background = background ?: s.background,
                 lighting = lighting ?: s.lighting,
                 weather = weather ?: s.weather,
-                durationMs = durationMs?.coerceIn(2000L, 60000L) ?: s.durationMs,
+                durationMs = durationMs?.coerceIn(2000L, 180_000L) ?: s.durationMs,
                 customSkyHex = skyColorHex ?: s.customSkyHex,
                 customGroundHex = groundColorHex ?: s.customGroundHex
             )
@@ -1282,7 +1394,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
             if (start + totalDur > updated.durationMs) {
-                updated = updated.copy(durationMs = (start + totalDur + 500L).coerceAtMost(60_000L))
+                updated = updated.copy(durationMs = (start + totalDur + 500L).coerceAtMost(180_000L))
             }
             updated
         }
@@ -1292,28 +1404,41 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun setCharacterFaceState(expression: FacialExpression, eyeDirection: EyeDirection, autoBlink: Boolean) {
         val charId = _selectedCharInstanceId.value ?: return
         val start = _playheadMs.value
-        val end = start + 2500L
+        val end = (start + 2500L).coerceAtMost(180_000L)
         updateActiveScene { s ->
-            val freeRow = findFreeRow(
-                existing = s.faceClips.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs) },
-                startMs = start,
-                endMs = end
-            )
-            val clip = FaceClip(
-                id = UUID.randomUUID().toString(),
-                characterInstanceId = charId,
-                expression = expression,
-                eyeDirection = eyeDirection,
-                autoBlink = autoBlink,
-                startTimeMs = start,
-                endTimeMs = end,
-                trackRow = freeRow
-            )
-            _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.FACE_EXPR, clip.id)
-            s.copy(
-                faceClips = s.faceClips + clip,
-                durationMs = maxOf(s.durationMs, end + 300L).coerceAtMost(60_000L)
-            )
+            val existingOverlap = s.faceClips.firstOrNull { fc ->
+                fc.characterInstanceId == charId && start <= (fc.endTimeMs + 250L) && end >= (fc.startTimeMs - 250L)
+            }
+            if (existingOverlap != null) {
+                val updatedClip = existingOverlap.copy(
+                    expression = expression,
+                    eyeDirection = eyeDirection,
+                    autoBlink = autoBlink
+                )
+                _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.FACE_EXPR, updatedClip.id)
+                s.copy(faceClips = s.faceClips.map { if (it.id == updatedClip.id) updatedClip else it })
+            } else {
+                val freeRow = findFreeRow(
+                    existing = s.faceClips.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs) },
+                    startMs = start,
+                    endMs = end
+                )
+                val clip = FaceClip(
+                    id = UUID.randomUUID().toString(),
+                    characterInstanceId = charId,
+                    expression = expression,
+                    eyeDirection = eyeDirection,
+                    autoBlink = autoBlink,
+                    startTimeMs = start,
+                    endTimeMs = end,
+                    trackRow = freeRow
+                )
+                _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.FACE_EXPR, clip.id)
+                s.copy(
+                    faceClips = s.faceClips + clip,
+                    durationMs = maxOf(s.durationMs, end + 300L).coerceAtMost(180_000L)
+                )
+            }
         }
     }
 
@@ -1437,7 +1562,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         targetZoom: Float? = null
     ) {
         val start = _playheadMs.value
-        val end = (start + durationMs).coerceAtMost(60_000L)
+        val end = (start + durationMs).coerceAtMost(180_000L)
         val autoTargetChar = targetCharacterId ?: if (
             motionType == CameraMotionType.FOLLOW || motionType == CameraMotionType.TRACKING
         ) {
@@ -1462,7 +1587,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.CAMERA_CUT, cut.id)
             s.copy(
                 cameraCuts = (s.cameraCuts + cut).sortedBy { it.startTimeMs },
-                durationMs = maxOf(s.durationMs, end + 300L).coerceAtMost(60_000L)
+                durationMs = maxOf(s.durationMs, end + 300L).coerceAtMost(180_000L)
             )
         }
         showNotice("${motionType.label} ক্যামেরা কাট যোগ হয়েছে")
@@ -1481,7 +1606,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val camId = _selectedCameraId.value ?: scene.cameras.firstOrNull()?.id ?: "cam1"
         val start = _playheadMs.value
         val charEnd = inst.endTimeMs ?: scene.durationMs
-        val cutEnd = maxOf(start + 2400L, minOf(charEnd, scene.durationMs)).coerceAtMost(60_000L)
+        val cutEnd = maxOf(start + 2400L, minOf(charEnd, scene.durationMs)).coerceAtMost(180_000L)
 
         updateActiveScene { s ->
             val updatedCameras = s.cameras.ifEmpty { listOf(CameraNode("cam1", "Cam 1: Main")) }.map { c ->
@@ -1504,7 +1629,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             val nextCuts = if (existingSameTime != null) {
                 val updatedCut = existingSameTime.copy(
                     cameraId = camId,
-                    endTimeMs = maxOf(existingSameTime.endTimeMs, start + 2200L).coerceAtMost(60_000L),
+                    endTimeMs = maxOf(existingSameTime.endTimeMs, start + 2200L).coerceAtMost(180_000L),
                     motionType = if (smoothPan) CameraMotionType.SMOOTH_TRANSITION else CameraMotionType.FOLLOW,
                     targetCharacterId = characterInstanceId,
                     targetZoom = zoomLevel.coerceIn(0.8f, 2.6f)
@@ -1540,7 +1665,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             s.copy(
                 cameras = updatedCameras,
                 cameraCuts = nextCuts,
-                durationMs = maxOf(s.durationMs, cutEnd).coerceAtMost(60_000L)
+                durationMs = maxOf(s.durationMs, cutEnd).coerceAtMost(180_000L)
             )
         }
         showNotice("ক্যামেরা ${inst.name}-এর দিকে ঘুরানো হয়েছে")
@@ -1550,7 +1675,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val scene = _activeProject.value?.activeScene ?: return
         val camId = _selectedCameraId.value ?: scene.cameras.firstOrNull()?.id ?: "cam1"
         val start = _playheadMs.value
-        val cutEnd = (start + 2200L).coerceAtMost(60_000L)
+        val cutEnd = (start + 2200L).coerceAtMost(180_000L)
         updateActiveScene { s ->
             val updatedCameras = s.cameras.ifEmpty { listOf(CameraNode("cam1", "ক্যামেরা ১: প্রধান")) }.map { c ->
                 if (c.id == camId) {
@@ -1584,7 +1709,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             s.copy(
                 cameras = updatedCameras,
                 cameraCuts = (trimmed + wideCut).sortedBy { it.startTimeMs },
-                durationMs = maxOf(s.durationMs, cutEnd).coerceAtMost(60_000L)
+                durationMs = maxOf(s.durationMs, cutEnd).coerceAtMost(180_000L)
             )
         }
         showNotice("ক্যামেরা পুরো দৃশ্যে (ওয়াইড) রিসেট হয়েছে")
@@ -1776,7 +1901,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             updateActiveScene { s ->
                 var nextScene = s.copy(
                     audioClips = s.audioClips + clip,
-                    durationMs = maxOf(s.durationMs, clip.endTimeMs + 300L).coerceAtMost(60_000L)
+                    durationMs = maxOf(s.durationMs, clip.endTimeMs + 300L).coerceAtMost(180_000L)
                 )
                 if (syncExpression) {
                     val faceRow = findFreeRow(
@@ -1851,7 +1976,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     ?: emptyList()
                 val freeRow = findFreeRow(existingRows, start, rawClip.endTimeMs)
                 val clip = rawClip.copy(trackRow = freeRow)
-                updateActiveScene { s -> s.copy(audioClips = s.audioClips + clip, durationMs = maxOf(s.durationMs, clip.endTimeMs).coerceAtMost(60_000L)) }
+                updateActiveScene { s -> s.copy(audioClips = s.audioClips + clip, durationMs = maxOf(s.durationMs, clip.endTimeMs).coerceAtMost(180_000L)) }
                 _selectedAudioClipId.value = clip.id
                 _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.AUDIO, clip.id)
                 showNotice("ভয়েস রেকর্ড হয়েছে (${clip.effectiveDurationMs} মি.সে.)")
@@ -1862,8 +1987,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun importAudioUri(uri: Uri, trackType: AudioTrackType) {
+        val scene = _activeProject.value?.activeScene
         val charId = if (trackType == AudioTrackType.DIALOGUE || trackType == AudioTrackType.VOICE) {
-            _selectedCharInstanceId.value
+            _selectedCharInstanceId.value ?: scene?.characters?.firstOrNull()?.id
         } else null
         val start = _playheadMs.value
         viewModelScope.launch {
@@ -1875,12 +2001,60 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     ?: emptyList()
                 val freeRow = findFreeRow(existingRows, start, rawClip.endTimeMs)
                 val clip = rawClip.copy(trackRow = freeRow)
-                updateActiveScene { s -> s.copy(audioClips = s.audioClips + clip, durationMs = maxOf(s.durationMs, clip.endTimeMs).coerceAtMost(60_000L)) }
+                updateActiveScene { s ->
+                    s.copy(
+                        audioClips = s.audioClips + clip,
+                        durationMs = maxOf(s.durationMs, clip.endTimeMs + 300L).coerceAtMost(180_000L)
+                    )
+                }
                 _selectedAudioClipId.value = clip.id
                 _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.AUDIO, clip.id)
-                showNotice("অডিও ইম্পোর্ট হয়েছে (${clip.effectiveDurationMs} মি.সে.)")
+                audioEngine.playPreviewClip(clip)
+                if (charId != null) {
+                    val charName = scene?.characters?.find { it.id == charId }?.name ?: "চরিত্র"
+                    showNotice("$charName-এর সাথে অডিও অটো-সিঙ্ক হয়েছে (${"%.1f".format(clip.effectiveDurationMs / 1000f)} সে.)")
+                } else {
+                    showNotice("অডিও ইম্পোর্ট হয়েছে (${"%.1f".format(clip.effectiveDurationMs / 1000f)} সে.)")
+                }
             } else {
                 showNotice("নির্বাচিত অডিও ফাইলটি ডিকোড করা যায়নি")
+            }
+        }
+    }
+
+    fun importExternalVoiceForCharacter(uri: Uri, characterInstanceId: String?) {
+        val scene = _activeProject.value?.activeScene ?: return
+        val targetCharId = characterInstanceId ?: _selectedCharInstanceId.value ?: scene.characters.firstOrNull()?.id
+        val charName = scene.characters.find { it.id == targetCharId }?.name ?: "চরিত্র"
+        val start = _playheadMs.value
+        viewModelScope.launch {
+            val rawClip = audioEngine.importAudioFromUri(
+                uri = uri,
+                title = "$charName-এর ভয়েস",
+                trackType = AudioTrackType.VOICE,
+                characterInstanceId = targetCharId,
+                startTimeMs = start
+            )
+            if (rawClip != null) {
+                val existingRows = _activeProject.value?.activeScene?.audioClips
+                    ?.filter { it.characterInstanceId == targetCharId }
+                    ?.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs) }
+                    ?: emptyList()
+                val freeRow = findFreeRow(existingRows, start, rawClip.endTimeMs)
+                val clip = rawClip.copy(trackRow = freeRow)
+                updateActiveScene { s ->
+                    s.copy(
+                        audioClips = s.audioClips + clip,
+                        durationMs = maxOf(s.durationMs, clip.endTimeMs + 300L).coerceAtMost(180_000L)
+                    )
+                }
+                if (targetCharId != null) _selectedCharInstanceId.value = targetCharId
+                _selectedAudioClipId.value = clip.id
+                _selectedTimelineClip.value = TimelineClipSelection(TimelineClipCategory.AUDIO, clip.id)
+                audioEngine.playPreviewClip(clip)
+                showNotice("$charName-এর সাথে বাইরের ভয়েস অটো-সিঙ্ক হয়েছে (${"%.1f".format(clip.effectiveDurationMs / 1000f)} সে.)!")
+            } else {
+                showNotice("বাইরের ভয়েস ফাইলটি লোড করা যায়নি (MP3/WAV/M4A ব্যবহার করুন)")
             }
         }
     }
@@ -1917,7 +2091,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val scene = _activeProject.value?.activeScene ?: return
         val clip = scene.audioClips.find { it.id == clipId } ?: return
         val nextStart = clip.endTimeMs + 100L
-        val nextEnd = (nextStart + clip.effectiveDurationMs).coerceAtMost(60_000L)
+        val nextEnd = (nextStart + clip.effectiveDurationMs).coerceAtMost(180_000L)
         val freeRow = findFreeRow(
             scene.audioClips.filter { it.trackType == clip.trackType }.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs) },
             nextStart, nextEnd
@@ -2096,9 +2270,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             _exportState.value = ExportUiState.Exporting(0.01f, "H.264 ও AAC এনকোডার প্রস্তুত হচ্ছে...")
             try {
                 val charMap = characters.value.associateBy { it.id }
-                val res = VideoExportEngine.exportSceneToMp4(
+                val targetScenes = if (config.exportFullMovie && proj.scenes.isNotEmpty()) {
+                    proj.scenes
+                } else {
+                    listOf(scene)
+                }
+                val res = VideoExportEngine.exportScenesToMp4(
                     context = getApplication(),
-                    scene = scene,
+                    scenes = targetScenes,
                     characterLibrary = charMap,
                     audioEngine = audioEngine,
                     config = config,
@@ -2203,7 +2382,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         if (c.id == clipId) {
                             val curEnd = c.endTimeMs ?: s.durationMs
                             val dur = (curEnd - c.startTimeMs).coerceAtLeast(300L)
-                            val newEnd = (clampedStart + dur).coerceAtMost(60_000L)
+                            val newEnd = (clampedStart + dur).coerceAtMost(180_000L)
                             maxEnd = maxOf(maxEnd, newEnd)
                             c.copy(
                                 startTimeMs = clampedStart,
@@ -2217,7 +2396,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     motionClips = s.motionClips.map { m ->
                         if (m.id == clipId) {
                             val dur = (m.endTimeMs - m.startTimeMs).coerceAtLeast(300L)
-                            val newEnd = (clampedStart + dur).coerceAtMost(60_000L)
+                            val newEnd = (clampedStart + dur).coerceAtMost(180_000L)
                             maxEnd = maxOf(maxEnd, newEnd)
                             m.copy(
                                 startTimeMs = clampedStart,
@@ -2231,7 +2410,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     faceClips = s.faceClips.map { f ->
                         if (f.id == clipId) {
                             val dur = (f.endTimeMs - f.startTimeMs).coerceAtLeast(300L)
-                            val newEnd = (clampedStart + dur).coerceAtMost(60_000L)
+                            val newEnd = (clampedStart + dur).coerceAtMost(180_000L)
                             maxEnd = maxOf(maxEnd, newEnd)
                             f.copy(
                                 startTimeMs = clampedStart,
@@ -2244,7 +2423,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 TimelineClipCategory.AUDIO -> s.copy(
                     audioClips = s.audioClips.map { a ->
                         if (a.id == clipId) {
-                            val newEnd = (clampedStart + a.effectiveDurationMs).coerceAtMost(60_000L)
+                            val newEnd = (clampedStart + a.effectiveDurationMs).coerceAtMost(180_000L)
                             maxEnd = maxOf(maxEnd, newEnd)
                             a.copy(
                                 startTimeMs = clampedStart,
@@ -2258,7 +2437,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         if (p.id == clipId) {
                             val curEnd = p.endTimeMs ?: s.durationMs
                             val dur = (curEnd - p.startTimeMs).coerceAtLeast(300L)
-                            val newEnd = (clampedStart + dur).coerceAtMost(60_000L)
+                            val newEnd = (clampedStart + dur).coerceAtMost(180_000L)
                             maxEnd = maxOf(maxEnd, newEnd)
                             p.copy(
                                 startTimeMs = clampedStart,
@@ -2272,7 +2451,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     cameraCuts = s.cameraCuts.map { c ->
                         if (c.id == clipId) {
                             val dur = (c.endTimeMs - c.startTimeMs).coerceAtLeast(300L)
-                            val newEnd = (clampedStart + dur).coerceAtMost(60_000L)
+                            val newEnd = (clampedStart + dur).coerceAtMost(180_000L)
                             maxEnd = maxOf(maxEnd, newEnd)
                             c.copy(
                                 startTimeMs = clampedStart,
@@ -2293,8 +2472,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         newStartMs: Long,
         newEndMs: Long
     ) {
-        val safeStart = newStartMs.coerceIn(0L, 59_500L)
-        val safeEnd = newEndMs.coerceIn(safeStart + 250L, 60_000L)
+        val safeStart = newStartMs.coerceIn(0L, 179_500L)
+        val safeEnd = newEndMs.coerceIn(safeStart + 250L, 180_000L)
         updateActiveScene { s ->
             val updated = when (category) {
                 TimelineClipCategory.CHARACTER -> s.copy(
@@ -2478,7 +2657,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val curEnd = inst.endTimeMs ?: scene.durationMs
                 val dur = (curEnd - inst.startTimeMs).coerceAtLeast(1000L)
                 val nextStart = if (curEnd + 300L <= scene.durationMs) curEnd + 100L else inst.startTimeMs
-                val nextEnd = (nextStart + dur).coerceAtMost(60_000L)
+                val nextEnd = (nextStart + dur).coerceAtMost(180_000L)
                 val freeRow = findFreeRow(
                     scene.characters.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs ?: scene.durationMs) },
                     nextStart, nextEnd
@@ -2499,7 +2678,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val clip = scene.motionClips.find { it.id == clipId } ?: return
                 val dur = (clip.endTimeMs - clip.startTimeMs).coerceAtLeast(300L)
                 val nextStart = clip.endTimeMs + 80L
-                val nextEnd = (nextStart + dur).coerceAtMost(60_000L)
+                val nextEnd = (nextStart + dur).coerceAtMost(180_000L)
                 val freeRow = findFreeRow(
                     scene.motionClips.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs) },
                     nextStart, nextEnd
@@ -2512,7 +2691,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val clip = scene.faceClips.find { it.id == clipId } ?: return
                 val dur = (clip.endTimeMs - clip.startTimeMs).coerceAtLeast(300L)
                 val nextStart = clip.endTimeMs + 80L
-                val nextEnd = (nextStart + dur).coerceAtMost(60_000L)
+                val nextEnd = (nextStart + dur).coerceAtMost(180_000L)
                 val freeRow = findFreeRow(
                     scene.faceClips.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs) },
                     nextStart, nextEnd
@@ -2526,7 +2705,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val curEnd = prop.endTimeMs ?: scene.durationMs
                 val dur = (curEnd - prop.startTimeMs).coerceAtLeast(500L)
                 val nextStart = curEnd + 80L
-                val nextEnd = (nextStart + dur).coerceAtMost(60_000L)
+                val nextEnd = (nextStart + dur).coerceAtMost(180_000L)
                 val freeRow = findFreeRow(
                     scene.props.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs ?: scene.durationMs) },
                     nextStart, nextEnd
@@ -2545,7 +2724,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val cut = scene.cameraCuts.find { it.id == clipId } ?: return
                 val dur = (cut.endTimeMs - cut.startTimeMs).coerceAtLeast(300L)
                 val nextStart = cut.endTimeMs + 80L
-                val nextEnd = (nextStart + dur).coerceAtMost(60_000L)
+                val nextEnd = (nextStart + dur).coerceAtMost(180_000L)
                 val freeRow = findFreeRow(
                     scene.cameraCuts.map { Triple(it.trackRow, it.startTimeMs, it.endTimeMs) },
                     nextStart, nextEnd

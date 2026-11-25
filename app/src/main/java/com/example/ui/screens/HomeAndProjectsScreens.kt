@@ -69,6 +69,8 @@ import com.example.domain.model.AnimationProject
 import com.example.domain.model.ExportAspectRatio
 import com.example.domain.model.SceneBackground
 import com.example.domain.model.StudioScene
+import com.example.engine.ReadyStoryTemplate
+import com.example.engine.StoryTemplateCatalog
 import com.example.ui.AiGeneratorUiState
 import com.example.ui.StudioDestination
 import com.example.ui.theme.StudioAmber
@@ -89,7 +91,8 @@ fun HomeScreen(
     onNavigate: (StudioDestination) -> Unit,
     onOpenProject: (AnimationProject) -> Unit,
     onCreateNewProject: (String, SceneBackground) -> Unit,
-    onGenerateAiScene: (String) -> Unit
+    onGenerateAiScene: (String) -> Unit,
+    onApplyReadyStoryTemplate: (ReadyStoryTemplate) -> Unit = {}
 ) {
     var aiPrompt by remember {
         mutableStateOf("দুই বন্ধু পার্কে হাঁটছে। একজন হাত নেড়ে ডাকছে। আরেকজন থেমে তার দিকে তাকায়। তারা কিছুক্ষণ কথা বলে একসাথে হাসে।")
@@ -196,6 +199,90 @@ fun HomeScreen(
                     onClick = { onNavigate(StudioDestination.EXPORT_STUDIO) },
                     modifier = Modifier.weight(1f)
                 )
+            }
+        }
+
+        // Ready-Made Bangladeshi Cartoon Templates (1-Tap Movie Starter)
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("রেডিমেট কার্টুন টেমপ্লেট", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "১ ট্যাপেই তৈরি দৃশ্য, সংলাপ ও ক্যামেরা চালু করুন",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(StoryTemplateCatalog.templates, key = { it.id }) { tmpl ->
+                    Card(
+                        onClick = { onApplyReadyStoryTemplate(tmpl) },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .width(240.dp)
+                            .border(1.dp, StudioCyan.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                            .testTag("home_template_${tmpl.id}")
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    color = StudioAmber.copy(alpha = 0.18f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = tmpl.category,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = StudioAmber,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                                Text(
+                                    text = tmpl.badgeText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = StudioCyan
+                                )
+                            }
+                            Text(
+                                text = tmpl.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = tmpl.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Button(
+                                onClick = { onApplyReadyStoryTemplate(tmpl) },
+                                colors = ButtonDefaults.buttonColors(containerColor = StudioCyan, contentColor = StudioObsidian),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.PlayCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("১ ট্যাপে শুরু করুন", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
             }
         }
 

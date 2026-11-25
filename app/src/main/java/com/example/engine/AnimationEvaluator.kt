@@ -181,10 +181,25 @@ object AnimationEvaluator {
         val viseme = visemeKf ?: audioViseme
         val isTalking = viseme != Viseme.REST
 
-        // Subtle head nod when talking
-        if (isTalking && activeMotion == null) {
-            val talkBob = sin(timeMs * 0.012f) * 3.5f
+        // Lifelike talking head nod & gentle hand gestures whenever talking (dialogue or external voice)
+        if (isTalking) {
+            val headAmp = if (activeMotion == null || activeMotion.preset in setOf(
+                    MotionPreset.STAND, MotionPreset.SIT, MotionPreset.SIT_FLOOR, MotionPreset.TALK_ON_PHONE
+                )
+            ) 3.4f else 1.8f
+            val talkBob = sin(timeMs * 0.012f) * headAmp + cos(timeMs * 0.0045f) * (headAmp * 0.5f)
             basePose = basePose.withJointAngle(RigJoint.HEAD, basePose.angleOf(RigJoint.HEAD) + talkBob)
+
+            if (activeMotion == null || activeMotion.preset in setOf(
+                    MotionPreset.STAND, MotionPreset.SIT, MotionPreset.SIT_FLOOR
+                )
+            ) {
+                val talkGesture = sin(timeMs * 0.0055f) * 14f
+                val foreGesture = cos(timeMs * 0.007f) * 12f
+                basePose = basePose
+                    .withJointAngle(RigJoint.UPPER_ARM_L, basePose.angleOf(RigJoint.UPPER_ARM_L) + 12f + talkGesture * 0.6f)
+                    .withJointAngle(RigJoint.LOWER_ARM_L, basePose.angleOf(RigJoint.LOWER_ARM_L) - 24f + foreGesture)
+            }
         }
 
         return EvaluatedCharacter(

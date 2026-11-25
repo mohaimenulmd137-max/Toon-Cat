@@ -280,17 +280,37 @@ object ProceduralSoundSynthesizer {
     }
 
     fun extractWaveformPeaks(samples: ShortArray, bins: Int = 64): List<Float> {
-        if (samples.isEmpty()) return List(bins) { 0f }
-        val step = (samples.size / bins).coerceAtLeast(1)
+        if (samples.isEmpty() || bins <= 0) return List(bins.coerceAtLeast(1)) { 0f }
+        var globalMax = 0
+        for (s in samples) {
+            val a = abs(s.toInt())
+            if (a > globalMax) globalMax = a
+        }
+        if (globalMax < 160) return List(bins) { 0f }
+
+        val normScale = maxOf(globalMax.toFloat(), 1800f)
+        val silenceFloor = maxOf(globalMax * 0.065f, 240f)
+        val step = (samples.size.toFloat() / bins).coerceAtLeast(1f)
         return List(bins) { b ->
-            val start = b * step
-            val end = ((b + 1) * step).coerceAtMost(samples.size)
+            val start = (b * step).toInt().coerceIn(0, samples.lastIndex)
+            val end = (((b + 1) * step).toInt()).coerceIn(start + 1, samples.size)
             var peak = 0
+            var sumSq = 0.0
             for (i in start until end) {
                 val a = abs(samples[i].toInt())
                 if (a > peak) peak = a
+                sumSq += a.toDouble() * a.toDouble()
             }
-            (peak / 32767f).coerceIn(0.04f, 1.0f)
+            val rms = kotlin.math.sqrt(sumSq / (end - start).coerceAtLeast(1)).toFloat()
+            val blended = (peak * 0.55f + rms * 0.45f)
+            if (peak < silenceFloor) {
+                0f
+            } else {
+                val norm = (blended / normScale).coerceIn(0f, 1f)
+                // Boost quiet speech syllables while preserving clear rest/open contrast
+                val shaped = Math.pow(norm.toDouble(), 0.72).toFloat()
+                shaped.coerceIn(0.09f, 1.0f)
+            }
         }
     }
 

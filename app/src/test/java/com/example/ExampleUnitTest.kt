@@ -413,6 +413,88 @@ class ExampleUnitTest {
         val bdBgs = com.example.domain.model.SceneBackground.entries.filter { it.category == "বাংলাদেশ" }
         assertTrue(bdBgs.size >= 6)
     }
+
+    @Test
+    fun `external voice waveform extraction normalizes quiet speech and gates silence for lip sync`() {
+        val sampleRate = 44100
+        // 0.5s speech (~6000 amplitude) followed by 0.5s near-silence (~80 noise floor)
+        val samples = ShortArray(sampleRate) { i ->
+            if (i < sampleRate / 2) {
+                (kotlin.math.sin(2.0 * Math.PI * 220.0 * i / sampleRate) * 6000.0).toInt().toShort()
+            } else {
+                80.toShort()
+            }
+        }
+        val peaks = com.example.engine.ProceduralSoundSynthesizer.extractWaveformPeaks(samples, 64)
+        assertEquals(64, peaks.size)
+        assertTrue(peaks[10] > 0.55f)
+        assertEquals(0f, peaks[50], 0.01f)
+
+        val voiceClip = com.example.domain.model.AudioClip(
+            id = "ext_voice_1",
+            title = "Imported Voice",
+            trackType = com.example.domain.model.AudioTrackType.VOICE,
+            sourceType = com.example.domain.model.AudioSourceType.IMPORTED,
+            characterInstanceId = "c_spk",
+            startTimeMs = 0L,
+            trimStartMs = 0L,
+            trimEndMs = 1000L,
+            originalDurationMs = 1000L,
+            waveformPeaks = peaks
+        )
+        assertNotEquals(Viseme.REST, LipSyncEngine.evaluateViseme("c_spk", 180L, listOf(voiceClip)))
+        assertEquals(Viseme.REST, LipSyncEngine.evaluateViseme("c_spk", 800L, listOf(voiceClip)))
+
+        val standingChar = SceneCharacterInstance(id = "c_spk", characterId = "char_leo", name = "লিও")
+        val scene = StudioScene(
+            id = "s_talk",
+            name = "External Voice Talk",
+            durationMs = 2000L,
+            characters = listOf(standingChar),
+            audioClips = listOf(voiceClip)
+        )
+        val evalTalking = AnimationEvaluator.evaluateScene(scene, 200L).characters.first()
+        val evalSilent = AnimationEvaluator.evaluateScene(scene, 800L).characters.first()
+        assertNotEquals(Viseme.REST, evalTalking.viseme)
+        assertEquals(Viseme.REST, evalSilent.viseme)
+        assertTrue(kotlin.math.abs(evalTalking.pose.angleOf(RigJoint.HEAD)) > 0f)
+    }
+
+    @Test
+    fun `ready story templates and easy script parser build valid multi-scene stories`() {
+        val library = ProjectRepository.defaultCharacterLibrary()
+        assertTrue(com.example.engine.StoryTemplateCatalog.templates.size >= 6)
+        com.example.engine.StoryTemplateCatalog.templates.forEach { tmpl ->
+            val proj = tmpl.toAnimationProject(library)
+            assertTrue(proj.scenes.isNotEmpty())
+            assertTrue(proj.scenes.all { it.characters.isNotEmpty() && it.audioClips.isNotEmpty() })
+        }
+
+        val c1 = SceneCharacterInstance(id = "id_r", characterId = "char_farmer_rahim", name = "রহিম চাচা")
+        val c2 = SceneCharacterInstance(id = "id_m", characterId = "char_tea_mamun", name = "মামুন ভাই")
+        val parsed = com.example.engine.EasyStoryScriptParser.parseScriptLines(
+            scriptText = "রহিম চাচা: এক কাপ গরম চা দাও!\nমামুন ভাই: এই যে চাচা, এক্ষুনি দিচ্ছি!",
+            characters = listOf(c1, c2),
+            characterLibrary = library.associateBy { it.id }
+        )
+        assertEquals(2, parsed.size)
+        assertEquals("id_r", parsed[0].characterInstanceId)
+        assertEquals("id_m", parsed[1].characterInstanceId)
+        assertTrue(parsed[1].startMs > parsed[0].endMs)
+    }
+
+    @Test
+    fun `multi scene video export builds contiguous movie ranges across all scenes`() {
+        val s1 = StudioScene(id = "sc1", name = "Scene 1", durationMs = 4500L)
+        val s2 = StudioScene(id = "sc2", name = "Scene 2", durationMs = 6200L)
+        val ranges = com.example.engine.VideoExportEngine.buildSceneTimelineRanges(listOf(s1, s2))
+        assertEquals(2, ranges.size)
+        assertEquals(0L, ranges[0].startMs)
+        assertEquals(4500L, ranges[0].endMs)
+        assertEquals(4500L, ranges[1].startMs)
+        assertEquals(10700L, ranges[1].endMs)
+    }
 }
+
 
 

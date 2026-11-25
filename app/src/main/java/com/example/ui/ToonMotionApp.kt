@@ -219,7 +219,8 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                                     onNavigate = viewModel::navigateTo,
                                     onOpenProject = viewModel::loadProjectIntoEditor,
                                     onCreateNewProject = viewModel::createNewProject,
-                                    onGenerateAiScene = viewModel::generateSceneFromText
+                                    onGenerateAiScene = viewModel::generateSceneFromText,
+                                    onApplyReadyStoryTemplate = viewModel::applyReadyStoryTemplate
                                 )
                             }
                             StudioDestination.PROJECTS -> {
@@ -415,7 +416,13 @@ fun ToonMotionApp(viewModel: StudioViewModel = viewModel()) {
                                             viewModel.restoreSceneSnapshot(snap, depth)
                                         },
                                         bengaliTtsAvailable = viewModel.isBengaliTtsAvailable(),
-                                        onApplyVoiceEffect = viewModel::applyVoiceEffectToClip
+                                        onApplyVoiceEffect = viewModel::applyVoiceEffectToClip,
+                                        onImportExternalVoiceForCharacter = viewModel::importExternalVoiceForCharacter,
+                                        onApplyReadyStoryTemplate = viewModel::applyReadyStoryTemplate,
+                                        onAppendReadySceneFromTemplate = viewModel::appendReadySceneFromTemplate,
+                                        onApplyEasyStoryScene = viewModel::applyEasyStoryToActiveScene,
+                                        onDuplicateScene = viewModel::duplicateActiveScene,
+                                        onDeleteScene = viewModel::deleteSceneAt
                                     )
                                 }
                             }

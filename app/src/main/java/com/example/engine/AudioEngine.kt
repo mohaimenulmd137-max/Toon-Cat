@@ -368,7 +368,7 @@ class AudioEngine(private val context: Context) {
             if (samples.isNotEmpty()) {
                 ProceduralSoundSynthesizer.writeWavFile(outFile, samples)
                 val durMs = ((samples.size * 1000L) / ProceduralSoundSynthesizer.SAMPLE_RATE).coerceAtLeast(400L)
-                val peaks = ProceduralSoundSynthesizer.extractWaveformPeaks(samples, 64)
+                val peaks = ProceduralSoundSynthesizer.extractWaveformPeaks(samples, peakBinsForDuration(durMs))
                 return@withContext AudioClip(
                     id = UUID.randomUUID().toString(),
                     title = clipTitle,
@@ -412,7 +412,7 @@ class AudioEngine(private val context: Context) {
             originalDurationMs = estDurMs,
             volume = 0.92f,
             pitch = effPitch,
-            waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(synth, 64),
+            waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(synth, peakBinsForDuration(estDurMs)),
             dialogueText = cleanText,
             voiceCharacter = voiceCharacter,
             voiceEmotion = voiceEmotion
@@ -485,7 +485,7 @@ class AudioEngine(private val context: Context) {
             trimEndMs = durMs,
             originalDurationMs = durMs,
             volume = 0.95f,
-            waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(samples, 64)
+            waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(samples, peakBinsForDuration(durMs))
         )
     }
 
@@ -524,7 +524,7 @@ class AudioEngine(private val context: Context) {
             pitch = 1.0f,
             playbackSpeed = 1.0f,
             voiceEffect = effect,
-            waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(processed, 64)
+            waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(processed, peakBinsForDuration(durMs))
         )
     }
 
@@ -571,10 +571,13 @@ class AudioEngine(private val context: Context) {
             trimStartMs = 0L,
             trimEndMs = durMs,
             originalDurationMs = durMs,
-            volume = 0.85f,
-            waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(samples, 64)
+            volume = 0.88f,
+            waveformPeaks = ProceduralSoundSynthesizer.extractWaveformPeaks(samples, peakBinsForDuration(durMs))
         )
     }
+
+    private fun peakBinsForDuration(durMs: Long): Int =
+        ((durMs / 55L).toInt()).coerceIn(64, 720)
 
     fun playPreviewClip(clip: AudioClip) {
         stopPlayback()
@@ -750,6 +753,27 @@ class AudioEngine(private val context: Context) {
         }
     }
 
+    fun mixScenesAudioToPcm(
+        scenes: List<StudioScene>,
+        includeDialogue: Boolean,
+        includeSfx: Boolean,
+        includeMusic: Boolean,
+        masterVolume: Float = 1.0f
+    ): ShortArray {
+        if (scenes.isEmpty()) return ShortArray(ProceduralSoundSynthesizer.SAMPLE_RATE)
+        val parts = scenes.map { sc ->
+            mixSceneAudioToPcm(sc, includeDialogue, includeSfx, includeMusic, masterVolume)
+        }
+        val totalLen = parts.sumOf { it.size }.coerceAtLeast(ProceduralSoundSynthesizer.SAMPLE_RATE)
+        val out = ShortArray(totalLen)
+        var cursor = 0
+        for (p in parts) {
+            p.copyInto(out, destinationOffset = cursor)
+            cursor += p.size
+        }
+        return out
+    }
+
     private fun decodeUriToMono44kSamples(uri: Uri): ShortArray {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
@@ -780,7 +804,7 @@ class AudioEngine(private val context: Context) {
             val info = MediaCodec.BufferInfo()
             var inputDone = false
             var outputDone = false
-            val maxSamplesCap = srcRate * 30 // cap decode at 30s for mobile safety
+            val maxSamplesCap = srcRate * 120 // up to 120s voice clip decode support
 
             while (!outputDone && monoOut.size < maxSamplesCap) {
                 if (!inputDone) {

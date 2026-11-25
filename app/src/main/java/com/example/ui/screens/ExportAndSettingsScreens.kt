@@ -77,9 +77,24 @@ fun ExportStudioScreen(
     var includeDialogue by remember { mutableStateOf(true) }
     var includeSfx by remember { mutableStateOf(true) }
     var includeMusic by remember { mutableStateOf(true) }
+    var exportFullMovie by remember(project?.scenes?.size) { mutableStateOf(true) }
 
-    val config = ExportConfig(resolution, fps, aspectRatio, includeDialogue, includeSfx, includeMusic)
+    val config = ExportConfig(
+        resolution = resolution,
+        fps = fps,
+        aspectRatio = aspectRatio,
+        includeDialogue = includeDialogue,
+        includeSfx = includeSfx,
+        includeMusic = includeMusic,
+        exportFullMovie = exportFullMovie
+    )
     val (outW, outH) = config.computeVideoDimensions()
+    val sceneCount = project?.scenes?.size ?: 0
+    val movieDurationSec = if (exportFullMovie && sceneCount > 0) {
+        (project?.scenes?.sumOf { it.durationMs } ?: 0L) / 1000f
+    } else {
+        (project?.activeScene?.durationMs ?: 0L) / 1000f
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -89,7 +104,11 @@ fun ExportStudioScreen(
         item {
             Text("ভিডিও এক্সপোর্ট স্টুডিও (MP4)", style = MaterialTheme.typography.headlineSmall)
             Text(
-                text = "সক্রিয় দৃশ্য: ${project?.activeScene?.name ?: "নেই"} • আউটপুট ${outW}×${outH} @ ${fps} FPS",
+                text = if (exportFullMovie && sceneCount > 1) {
+                    "পুরো সিনেমা (${sceneCount}টি দৃশ্য • ${"%.1f".format(movieDurationSec)} সে.) • ${outW}×${outH} @ ${fps} FPS"
+                } else {
+                    "সক্রিয় দৃশ্য: ${project?.activeScene?.name ?: "নেই"} (${"%.1f".format(movieDurationSec)} সে.) • ${outW}×${outH} @ ${fps} FPS"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = StudioCyan
             )
@@ -110,6 +129,26 @@ fun ExportStudioScreen(
 
                     Text("স্ক্রিনের অনুপাত", style = MaterialTheme.typography.titleSmall)
                     EnumChipRow(ExportAspectRatio.entries, aspectRatio, { it.label }) { aspectRatio = it }
+
+                    if (sceneCount > 1) {
+                        Text("সিনেমা রেন্ডার মোড", style = MaterialTheme.typography.titleSmall)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "পুরো সিনেমা এক্সপোর্ট (সব দৃশ্য একসাথে: ${sceneCount}টি)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Switch(
+                                checked = exportFullMovie,
+                                onCheckedChange = { exportFullMovie = it },
+                                modifier = Modifier.testTag("export_full_movie_switch")
+                            )
+                        }
+                    }
 
                     Text("অডিও ট্র্যাক মিক্স", style = MaterialTheme.typography.titleSmall)
                     ToggleRow("সংলাপ ও ভয়েস যোগ করুন", includeDialogue) { includeDialogue = it }

@@ -437,7 +437,7 @@ fun AnimationStudioPanel(
                             mutableStateOf(onSuggestVoiceEmotion(selectedCharInst?.id))
                         }
                         var syncExpr by remember { mutableStateOf(true) }
-                        var syncMotion by remember { mutableStateOf(true) }
+                        var syncMotion by remember { mutableStateOf(false) }
                         var pitch by remember { mutableFloatStateOf(1.0f) }
                         var speed by remember { mutableFloatStateOf(1.0f) }
 

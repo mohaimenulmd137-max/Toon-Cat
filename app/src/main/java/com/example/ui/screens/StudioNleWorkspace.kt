@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Animation
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
@@ -65,6 +66,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Palette
@@ -86,23 +88,31 @@ import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -165,7 +175,10 @@ import com.example.domain.model.VoiceEffectFilter
 import com.example.domain.model.VoiceEmotion
 import com.example.domain.model.WeatherType
 import com.example.engine.AnimationEvaluator
+import com.example.engine.EasyStoryScriptParser
+import com.example.engine.ReadyStoryTemplate
 import com.example.engine.StageRenderer
+import com.example.engine.StoryTemplateCatalog
 import com.example.ui.StageToolMode
 import com.example.ui.StudioDestination
 import com.example.ui.TimelineClipCategory
@@ -185,8 +198,11 @@ import com.example.ui.theme.NleSurface
 import com.example.ui.theme.NleSurfaceElevated
 import com.example.ui.theme.NleTeal
 import com.example.ui.theme.NleTealFill
+import com.example.ui.theme.StudioAmber
 import com.example.ui.theme.StudioCoral
 import com.example.ui.theme.StudioCyan
+import com.example.ui.theme.StudioMint
+import com.example.ui.theme.StudioObsidian
 import com.example.ui.theme.TrackBodyColor
 import com.example.ui.theme.TrackCameraColor
 import com.example.ui.theme.TrackCharacterColor
@@ -202,6 +218,7 @@ import com.example.ui.theme.TrackVoiceColor
 
 private enum class NleSheet(val title: String) {
     NONE(""),
+    EASY_STORY("সহজ গল্প, দৃশ্য ও টেমপ্লেট"),
     CAST_AND_SCENE("ক্যারেক্টার ও দৃশ্য"),
     MOTIONS("বডি মোশন ও অটোমেশন"),
     RIG_POSE("২৪-জয়েন্ট রিগ ও পোজ (IK/FK)"),
@@ -327,6 +344,12 @@ fun StudioNleWorkspace(
     onCancelStagedEdit: (StudioScene, Int) -> Unit,
     bengaliTtsAvailable: Boolean = true,
     onApplyVoiceEffect: (String, VoiceEffectFilter, Float, Float) -> Unit = { _, _, _, _ -> },
+    onImportExternalVoiceForCharacter: (Uri, String?) -> Unit = { _, _ -> },
+    onApplyReadyStoryTemplate: (ReadyStoryTemplate) -> Unit = {},
+    onAppendReadySceneFromTemplate: (ReadyStoryTemplate) -> Unit = {},
+    onApplyEasyStoryScene: (SceneBackground, LightingMood, WeatherType, Boolean, String) -> Unit = { _, _, _, _, _ -> },
+    onDuplicateScene: () -> Unit = {},
+    onDeleteScene: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var activeSheet by remember { mutableStateOf(NleSheet.NONE) }
@@ -334,6 +357,7 @@ fun StudioNleWorkspace(
     var stagedUndoDepth by remember { mutableStateOf(0) }
     var showResolutionMenu by remember { mutableStateOf(false) }
     var showGuides by remember { mutableStateOf(true) }
+    var compactTimeline by remember { mutableStateOf(true) }
     val hiddenLayers = remember { mutableStateMapOf<String, Boolean>() }
     val lockedLayers = remember { mutableStateMapOf<String, Boolean>() }
 
@@ -505,13 +529,23 @@ fun StudioNleWorkspace(
             }
         }
 
-        // 2. FOUR COLORED CREATION PILLS ROW (Cast/Scene, Audio, Voice, Camera)
+        // 2. COLORED CREATION PILLS ROW (Easy Story, Cast/Scene, Audio, Voice, Camera)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp, vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            NleTintedPill(
+                label = "সহজ গল্প",
+                icon = Icons.Default.AutoAwesome,
+                hasDropdown = false,
+                fill = NleAmberFill,
+                accent = NleGold,
+                onClick = { openEditSheet(NleSheet.EASY_STORY) },
+                modifier = Modifier.testTag("pill_easy_story")
+            )
             NleTintedPill(
                 label = "মিডিয়া/চরিত্র",
                 icon = Icons.Default.PermMedia,
@@ -519,7 +553,7 @@ fun StudioNleWorkspace(
                 fill = NleGreenFill,
                 accent = NleGreen,
                 onClick = { openEditSheet(NleSheet.CAST_AND_SCENE) },
-                modifier = Modifier.weight(1f).testTag("pill_cast_scene")
+                modifier = Modifier.testTag("pill_cast_scene")
             )
             NleTintedPill(
                 label = "অডিও",
@@ -528,7 +562,7 @@ fun StudioNleWorkspace(
                 fill = NleAmberFill,
                 accent = NleAmber,
                 onClick = { openEditSheet(NleSheet.AUDIO) },
-                modifier = Modifier.weight(0.84f).testTag("pill_audio")
+                modifier = Modifier.testTag("pill_audio")
             )
             NleTintedPill(
                 label = "ভয়েস+কথা",
@@ -537,7 +571,7 @@ fun StudioNleWorkspace(
                 fill = NleBlueFill,
                 accent = NleBlue,
                 onClick = { openEditSheet(NleSheet.FACE_DIALOGUE) },
-                modifier = Modifier.weight(0.95f).testTag("pill_dialogue")
+                modifier = Modifier.testTag("pill_dialogue")
             )
             NleTintedPill(
                 label = "ক্যামেরা",
@@ -546,7 +580,7 @@ fun StudioNleWorkspace(
                 fill = NleTealFill,
                 accent = NleTeal,
                 onClick = { openEditSheet(NleSheet.CAMERA) },
-                modifier = Modifier.weight(0.90f).testTag("pill_camera")
+                modifier = Modifier.testTag("pill_camera")
             )
         }
 
@@ -822,6 +856,11 @@ fun StudioNleWorkspace(
         ) { uri ->
             uri?.let { onImportCustomCharacterUri(it) }
         }
+        val quickExtVoicePicker = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument()
+        ) { uri ->
+            uri?.let { onImportExternalVoiceForCharacter(it, activeChar?.id) }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -848,6 +887,23 @@ fun StudioNleWorkspace(
             ) {
                 Icon(Icons.Default.Image, contentDescription = "চরিত্র ইম্পোর্ট", tint = NleGreen, modifier = Modifier.size(12.dp))
                 Text("+ ইম্পোর্ট", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = NleGreen, maxLines = 1)
+            }
+            Row(
+                modifier = Modifier
+                    .height(26.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(NleBlueFill)
+                    .border(1.dp, NleBlue.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
+                    .clickable {
+                        quickExtVoicePicker.launch(arrayOf("audio/*"))
+                    }
+                    .padding(horizontal = 8.dp)
+                    .testTag("nle_import_voice_btn"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(Icons.Default.AudioFile, contentDescription = "বাইরের ভয়েস (অটো সিঙ্ক)", tint = NleBlue, modifier = Modifier.size(12.dp))
+                Text("+ ভয়েস (অটো সিঙ্ক)", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = NleBlue, maxLines = 1)
             }
             scene.characters.forEach { ch ->
                 val isSel = ch.id == activeChar?.id
@@ -1008,7 +1064,7 @@ fun StudioNleWorkspace(
             val trackWidthPx = with(density) { trackWidth.toPx() }.coerceAtLeast(1f)
             val playheadFrac = (playheadMs.toFloat() / scene.durationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
             val playheadX = trackWidth * playheadFrac
-            val layerColWidth = 148.dp
+            val layerColWidth = 158.dp
 
             val displayRows = remember(scene.characters) {
                 val charRows: List<NleDisplayRow> = scene.characters.mapIndexed { idx, inst ->
@@ -1068,6 +1124,25 @@ fun StudioNleWorkspace(
                         )
                         Box(
                             modifier = Modifier
+                                .height(22.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (compactTimeline) NleGreenFill else NleSurface)
+                                .border(1.dp, if (compactTimeline) NleGreen else NleBorder, RoundedCornerShape(6.dp))
+                                .clickable { compactTimeline = !compactTimeline }
+                                .padding(horizontal = 5.dp)
+                                .testTag("nle_timeline_mode_toggle"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (compactTimeline) "১ সারি" else "বিস্তারিত",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                color = if (compactTimeline) NleGreen else Color.LightGray,
+                                maxLines = 1
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
                                 .size(22.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(NleSurface)
@@ -1079,18 +1154,6 @@ fun StudioNleWorkspace(
                         }
                         Box(
                             modifier = Modifier
-                                .height(22.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(NleAmberFill)
-                                .border(1.dp, NleAmber.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
-                                .clickable { onZoomChange(1.0f) }
-                                .padding(horizontal = 5.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("ফিট", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp, color = NleGold)
-                        }
-                        Box(
-                            modifier = Modifier
                                 .size(22.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(NleSurface)
@@ -1098,7 +1161,7 @@ fun StudioNleWorkspace(
                                 .clickable { onZoomChange(timelineZoom + 0.25f) },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.ZoomIn, contentDescription = "Zoom in", tint = Color.LightGray, modifier = Modifier.size(13.dp))
+                            Icon(Icons.Default.ZoomIn, contentDescription = "জুম ইন", tint = Color.LightGray, modifier = Modifier.size(13.dp))
                         }
                     }
 
@@ -1247,15 +1310,18 @@ fun StudioNleWorkspace(
                                     scene.motionClips,
                                     scene.faceClips,
                                     scene.audioClips,
-                                    scene.durationMs
+                                    scene.durationMs,
+                                    compactTimeline
                                 ) {
-                                    extractCharacterLayerClips(row.instance, scene)
+                                    extractCharacterLayerClips(row.instance, scene, compactTimeline)
                                 }
                                 is NleDisplayRow.GlobalRow -> remember(row.kind, scene) {
                                     extractGlobalTrackClips(row.kind, scene)
                                 }
                             }
-                            val (packedClips, laneCount) = remember(rawClips) { assignClipSubLanes(rawClips) }
+                            val (packedClips, laneCount) = remember(rawClips, compactTimeline, isCharRow) {
+                                assignClipSubLanes(rawClips, forceSingleRow = compactTimeline && isCharRow)
+                            }
                             val rowHeight = (laneRowDp * laneCount.coerceAtLeast(1)) + 6.dp
                             val matchingKeyframes = when (row) {
                                 is NleDisplayRow.CharacterRow -> remember(scene.keyframes, row.instance.id) {
@@ -1778,6 +1844,31 @@ fun StudioNleWorkspace(
                             onAddProp = onAddProp,
                             onOpenInteractions = { activeSheet = NleSheet.INTERACT_PROPS }
                         )
+                        NleSheet.EASY_STORY -> EasyStoryBuilderPanel(
+                            project = project,
+                            scene = scene,
+                            characterLibrary = characterLibrary,
+                            onSwitchScene = onSwitchScene,
+                            onAddScene = onAddScene,
+                            onDuplicateScene = onDuplicateScene,
+                            onDeleteScene = onDeleteScene,
+                            onSelectCharacterInstance = onSelectCharacterInstance,
+                            onAddCharacterToScene = onAddCharacterToScene,
+                            onApplyQuickPosture = onApplyQuickHumanPosture,
+                            onAddMotionClip = onAddMotionClip,
+                            onImportExternalVoiceForCharacter = onImportExternalVoiceForCharacter,
+                            onApplyEasyStoryScene = onApplyEasyStoryScene,
+                            onApplyReadyStoryTemplate = { tmpl ->
+                                activeSheet = NleSheet.NONE
+                                stagedSnapshot = null
+                                onApplyReadyStoryTemplate(tmpl)
+                            },
+                            onAppendReadySceneFromTemplate = onAppendReadySceneFromTemplate,
+                            onGoToExport = {
+                                confirmEditSheet()
+                                onNavigate(StudioDestination.EXPORT_STUDIO)
+                            }
+                        )
                         NleSheet.NONE -> Unit
                     }
                 }
@@ -1950,16 +2041,15 @@ private data class NleRenderClip(
     val visualRow: Int = 0
 )
 
-private fun extractCharacterLayerClips(charInst: SceneCharacterInstance, scene: StudioScene): List<NleRenderClip> {
+private fun extractCharacterLayerClips(
+    charInst: SceneCharacterInstance,
+    scene: StudioScene,
+    compactMode: Boolean
+): List<NleRenderClip> {
     val dur = scene.durationMs.coerceAtLeast(1000L)
-    val presenceClip = NleRenderClip(
-        id = charInst.id,
-        category = TimelineClipCategory.CHARACTER,
-        label = "উপস্থিতি: ${charInst.name}",
-        startMs = charInst.startTimeMs,
-        endMs = (charInst.endTimeMs ?: dur).coerceAtLeast(charInst.startTimeMs + 250L),
-        preferredRow = 0
-    )
+    val charEnd = (charInst.endTimeMs ?: dur).coerceAtLeast(charInst.startTimeMs + 250L)
+    val isFullSpan = charInst.startTimeMs <= 0L && (charInst.endTimeMs == null || charEnd >= dur - 150L)
+
     val motionClips = scene.motionClips
         .filter { it.characterInstanceId == charInst.id }
         .map { clip ->
@@ -1969,7 +2059,7 @@ private fun extractCharacterLayerClips(charInst: SceneCharacterInstance, scene: 
                 label = clip.displayName,
                 startMs = clip.startTimeMs,
                 endMs = clip.endTimeMs.coerceAtLeast(clip.startTimeMs + 250L),
-                preferredRow = 1 + clip.trackRow.coerceIn(0, 3)
+                preferredRow = if (compactMode) 0 else 1 + clip.trackRow.coerceIn(0, 3)
             )
         }
     val faceClips = scene.faceClips
@@ -1981,7 +2071,7 @@ private fun extractCharacterLayerClips(charInst: SceneCharacterInstance, scene: 
                 label = "মুখ: ${fc.expression.label}",
                 startMs = fc.startTimeMs,
                 endMs = fc.endTimeMs.coerceAtLeast(fc.startTimeMs + 250L),
-                preferredRow = 2 + fc.trackRow.coerceIn(0, 3)
+                preferredRow = if (compactMode) 0 else 2 + fc.trackRow.coerceIn(0, 3)
             )
         }
     val voiceClips = scene.audioClips
@@ -1993,10 +2083,32 @@ private fun extractCharacterLayerClips(charInst: SceneCharacterInstance, scene: 
                 label = "ভয়েস: ${ac.title}",
                 startMs = ac.startTimeMs,
                 endMs = ac.endTimeMs.coerceAtLeast(ac.startTimeMs + 250L),
-                preferredRow = 2 + ac.trackRow.coerceIn(0, 3)
+                preferredRow = if (compactMode) 0 else 2 + ac.trackRow.coerceIn(0, 3)
             )
         }
-    return listOf(presenceClip) + motionClips + faceClips + voiceClips
+
+    val activityClips = motionClips + faceClips + voiceClips
+    val includePresence = !compactMode || !isFullSpan || activityClips.isEmpty()
+    val presenceClip = if (includePresence) {
+        listOf(
+            NleRenderClip(
+                id = charInst.id,
+                category = TimelineClipCategory.CHARACTER,
+                label = "উপস্থিতি: ${charInst.name}",
+                startMs = charInst.startTimeMs,
+                endMs = charEnd,
+                preferredRow = 0
+            )
+        )
+    } else emptyList()
+
+    // In compact mode, show voices and body motions cleanly on the single lane (omit redundant full-span face bars)
+    return if (compactMode) {
+        val visibleFaces = if (motionClips.isEmpty() && voiceClips.isEmpty()) faceClips.take(1) else emptyList()
+        presenceClip + motionClips + voiceClips + visibleFaces
+    } else {
+        presenceClip + activityClips
+    }
 }
 
 private fun extractGlobalTrackClips(kind: TimelineTrackKind, scene: StudioScene): List<NleRenderClip> {
@@ -2045,8 +2157,15 @@ private fun extractGlobalTrackClips(kind: TimelineTrackKind, scene: StudioScene)
     }
 }
 
-private fun assignClipSubLanes(rawClips: List<NleRenderClip>): Pair<List<NleRenderClip>, Int> {
+private fun assignClipSubLanes(
+    rawClips: List<NleRenderClip>,
+    forceSingleRow: Boolean = false
+): Pair<List<NleRenderClip>, Int> {
     if (rawClips.isEmpty()) return emptyList<NleRenderClip>() to 1
+    if (forceSingleRow) {
+        val sorted = rawClips.sortedBy { it.startMs }.map { it.copy(visualRow = 0) }
+        return sorted to 1
+    }
     val sorted = rawClips.sortedWith(compareBy<NleRenderClip> { it.preferredRow }.thenBy { it.startMs })
     val placed = mutableListOf<NleRenderClip>()
     for (clip in sorted) {
@@ -2364,7 +2483,7 @@ private fun NleInteractiveClipBlock(
                             onDragEnd = {
                                 val msPerPx = latestTotalMs / latestTrackWidthPx.coerceAtLeast(1f)
                                 val newEnd = (latestEndMs + (dragRightX * msPerPx).toLong())
-                                    .coerceIn(latestStartMs + 250L, 60_000L)
+                                    .coerceIn(latestStartMs + 250L, 180_000L)
                                 dragRightX = 0f
                                 latestOnResize(latestStartMs, newEnd)
                             },

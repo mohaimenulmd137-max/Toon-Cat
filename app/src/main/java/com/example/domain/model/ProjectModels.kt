@@ -58,7 +58,8 @@ data class ExportConfig(
     val aspectRatio: ExportAspectRatio = ExportAspectRatio.LANDSCAPE_16_9,
     val includeDialogue: Boolean = true,
     val includeSfx: Boolean = true,
-    val includeMusic: Boolean = true
+    val includeMusic: Boolean = true,
+    val exportFullMovie: Boolean = true
 ) {
     fun computeVideoDimensions(): Pair<Int, Int> {
         val shortPx = resolution.shortSidePx
